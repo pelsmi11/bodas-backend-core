@@ -1,0 +1,52 @@
+spring:
+  application:
+    name: bodas-backend-core
+
+  # Configuración de Base de Datos Dinámica
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  cloud:
+    aws:
+      region:
+        static: ${AWS_REGION}
+      credentials:
+        profile:
+          name: ${AWS_PROFILE}
+      s3:
+        region: ${AWS_REGION}
+      secretsmanager:
+        enabled: true
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${COGNITO_ISSUER_URI}
+
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: 6379
+
+app:
+  redis:
+    listener:
+      enabled: true
+  s3:
+    bucket-name: ${S3_BUCKET_NAME}
+  webhook:
+    secret: ${WEBHOOK_SECRET}
+  secrets:
+    moderation-name: ${MODERATION_SECRET_NAME}
