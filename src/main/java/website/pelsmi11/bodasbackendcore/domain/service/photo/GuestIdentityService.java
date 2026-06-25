@@ -54,13 +54,14 @@ public class GuestIdentityService {
         try {
             return UUID.fromString(guestIdRaw);
         } catch (IllegalArgumentException exception) {
-            throw CustomErrorException.handlerCustomError("guestId no tiene formato UUID valido", HttpStatus.BAD_REQUEST);
+            throw CustomErrorException.handlerCustomError("guestId is not a valid UUID", HttpStatus.BAD_REQUEST);
         }
     }
 
     private UserDevice resolveAnonymousDevice(UUID guestUuid) {
         UserDevice existing = userDeviceRepository.findById(guestUuid).orElse(null);
         if (existing != null) {
+            ensureNotBlocked(existing);
             touchDevice(existing);
             return userDeviceRepository.save(existing);
         }
@@ -73,13 +74,16 @@ public class GuestIdentityService {
     private UserDevice resolveAuthenticatedDevice(UUID guestUuid, String cognitoId) {
         User userByCognito = userRepository.findFirstByCognitoId(cognitoId).orElse(null);
         UserDevice device = userDeviceRepository.findById(guestUuid).orElse(null);
+        if (device != null) {
+            ensureNotBlocked(device);
+        }
 
         if (userByCognito != null) {
             if (device == null) {
                 return saveNewDevice(guestUuid, userByCognito);
             }
             if (!device.getUser().getId().equals(userByCognito.getId())) {
-                throw CustomErrorException.handlerCustomError("Este dispositivo ya esta vinculado a otro usuario", HttpStatus.CONFLICT);
+                throw CustomErrorException.handlerCustomError("This device is already linked to another user", HttpStatus.CONFLICT);
             }
             touchDevice(device);
             return userDeviceRepository.save(device);
@@ -88,7 +92,7 @@ public class GuestIdentityService {
         if (device != null) {
             User deviceUser = device.getUser();
             if (deviceUser.getCognitoId() != null && !deviceUser.getCognitoId().isBlank() && !deviceUser.getCognitoId().equals(cognitoId)) {
-                throw CustomErrorException.handlerCustomError("El dispositivo pertenece a una cuenta diferente", HttpStatus.CONFLICT);
+                throw CustomErrorException.handlerCustomError("Device belongs to a different account", HttpStatus.CONFLICT);
             }
             deviceUser.setCognitoId(cognitoId);
             userRepository.save(deviceUser);
@@ -112,5 +116,11 @@ public class GuestIdentityService {
 
     private void touchDevice(UserDevice userDevice) {
         userDevice.setLastActive(OffsetDateTime.now());
+    }
+
+    private void ensureNotBlocked(UserDevice userDevice) {
+        if (Boolean.TRUE.equals(userDevice.getBlocked())) {
+            throw CustomErrorException.handlerCustomError("Device blocked", HttpStatus.FORBIDDEN);
+        }
     }
 }

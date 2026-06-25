@@ -1,6 +1,7 @@
 package website.pelsmi11.bodasbackendcore.web.controller;
 
 import jakarta.validation.Valid;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -15,6 +16,7 @@ import website.pelsmi11.bodasbackendcore.domain.service.PhotoService;
 
 @RestController
 @RequestMapping("/api/v1/photos")
+@Tag(name = "Guest Photos", description = "Guest photo upload flow (presigned URL + confirmation)")
 public class PhotoController {
 
     private final PhotoService photoService;
@@ -52,7 +54,7 @@ public class PhotoController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         photoService.registerPendingPhoto(request, getCognitoId(jwt));
-        return ApiResponse.ok("Foto registrada exitosamente. Pendiente de moderacion.");
+        return ApiResponse.ok("Photo registered successfully. Pending moderation.");
     }
 
     private String getCognitoId(Jwt jwt) {

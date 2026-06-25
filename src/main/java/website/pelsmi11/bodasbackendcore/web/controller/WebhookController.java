@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import website.pelsmi11.bodasbackendcore.domain.dto.ApiResponse;
 import website.pelsmi11.bodasbackendcore.domain.dto.ModerationWebhookRequest;
 import website.pelsmi11.bodasbackendcore.domain.exception.CustomErrorException;
@@ -21,6 +22,7 @@ import java.security.MessageDigest;
  */
 @RestController
 @RequestMapping("/api/v1/webhooks")
+@Tag(name = "Webhooks", description = "Moderation callback from Lambda (shared secret validated)")
 public class WebhookController {
 
     private final ModerationService moderationService;
@@ -37,7 +39,7 @@ public class WebhookController {
      */
     @PostMapping("/moderation")
     public ApiResponse<String> handleModerationResult(
-            @RequestHeader("X-Webhook-Secret") String providedSecret,
+            @RequestHeader(value = "X-Webhook-Secret", required = false) String providedSecret,
             @Valid @RequestBody ModerationWebhookRequest request
     ) {
         if (!secureEquals(expectedSecret, providedSecret)) {

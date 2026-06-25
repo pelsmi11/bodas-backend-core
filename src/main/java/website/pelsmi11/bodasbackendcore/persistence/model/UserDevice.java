@@ -32,6 +32,13 @@ public class UserDevice {
     @Column(name = "last_active")
     private OffsetDateTime lastActive;
 
+    @ColumnDefault("false")
+    @Column(name = "blocked")
+    private Boolean blocked;
+
+    @Column(name = "blocked_at")
+    private OffsetDateTime blockedAt;
+
     @OneToMany(mappedBy = "device")
     private Set<Photo> photos = new LinkedHashSet<>();
 

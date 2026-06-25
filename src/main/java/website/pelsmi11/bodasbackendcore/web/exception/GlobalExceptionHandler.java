@@ -3,6 +3,7 @@ package website.pelsmi11.bodasbackendcore.web.exception;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import website.pelsmi11.bodasbackendcore.domain.dto.ApiError;
@@ -26,6 +27,11 @@ public class GlobalExceptionHandler {
                 .orElse("Invalid request");
 
         return buildError(message, HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiError> handleMissingParam(MissingServletRequestParameterException exception) {
+        return buildError("Required parameter: " + exception.getParameterName(), HttpStatus.BAD_REQUEST);
     }
 
     @ExceptionHandler(Exception.class)

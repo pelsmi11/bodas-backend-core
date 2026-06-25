@@ -36,6 +36,14 @@ public class User {
     @Column(name = "created_at")
     private OffsetDateTime createdAt;
 
+    @Column(name = "last_login_at")
+    private OffsetDateTime lastLoginAt;
+
+    @ColumnDefault("'GUEST'")
+    @Column(name = "role", length = 20)
+    @Enumerated(EnumType.STRING)
+    private UserRole role;
+
     @OneToMany(mappedBy = "user")
     private Set<UserDevice> devices = new LinkedHashSet<>();
 

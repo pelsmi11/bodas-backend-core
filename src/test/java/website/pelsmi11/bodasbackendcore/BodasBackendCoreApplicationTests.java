@@ -14,12 +14,13 @@ import website.pelsmi11.bodasbackendcore.persistence.repository.UserRepository;
         "spring.autoconfigure.exclude=" +
                 "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration," +
                 "org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration," +
-                "org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration",
+                "org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration," +
+                "org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration",
         "COGNITO_ISSUER_URI=https://example.com/test-issuer",
         "AWS_REGION=us-east-1",
         "AWS_PROFILE=test",
         "S3_BUCKET_NAME=test-bucket",
-        "REDIS_HOST=localhost",
+        "REDIS_HOST=127.0.0.1",
         "app.redis.listener.enabled=false",
         "WEBHOOK_SECRET=test-webhook-secret",
         "MODERATION_SECRET_NAME=test-secret"

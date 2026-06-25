@@ -24,6 +24,6 @@ public class EventResolver {
     public Event findActiveEvent(String eventToken) {
         return eventRepository.findFirstByToken(eventToken)
                 .filter(event -> Boolean.TRUE.equals(event.getIsActive()))
-                .orElseThrow(() -> CustomErrorException.handlerCustomError("Evento no encontrado o inactivo", HttpStatus.NOT_FOUND));
+                .orElseThrow(() -> CustomErrorException.handlerCustomError("Event not found or inactive", HttpStatus.NOT_FOUND));
     }
 }

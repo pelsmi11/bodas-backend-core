@@ -21,15 +21,11 @@ public class RedisConfig {
 
     @Bean
     @ConditionalOnProperty(name = "app.redis.listener.enabled", havingValue = "true", matchIfMissing = true)
-    RedisMessageListenerContainer redisMessageListenerContainer(
-            RedisConnectionFactory connectionFactory,
+    MessageListener feedMessageListener(
             EventFeedStreamService eventFeedStreamService,
             ObjectMapper objectMapper
     ) {
-        RedisMessageListenerContainer container = new RedisMessageListenerContainer();
-        container.setConnectionFactory(connectionFactory);
-
-        MessageListener listener = (message, pattern) -> {
+        return (message, pattern) -> {
             try {
                 String channel = new String(message.getChannel(), StandardCharsets.UTF_8);
                 String body = new String(message.getBody(), StandardCharsets.UTF_8);
@@ -41,12 +37,21 @@ public class RedisConfig {
                 // Intentionally ignore malformed messages to keep listener resilient.
             }
         };
+    }
 
-        container.addMessageListener(listener, new PatternTopic("event-feed:*"));
+    @Bean
+    @ConditionalOnProperty(name = "app.redis.listener.enabled", havingValue = "true", matchIfMissing = true)
+    RedisMessageListenerContainer redisMessageListenerContainer(
+            RedisConnectionFactory connectionFactory,
+            MessageListener feedMessageListener
+    ) {
+        RedisMessageListenerContainer container = new RedisMessageListenerContainer();
+        container.setConnectionFactory(connectionFactory);
+        container.addMessageListener(feedMessageListener, new PatternTopic("event-feed:*"));
         return container;
     }
 
-    private String extractEventToken(String channel) {
+    String extractEventToken(String channel) {
         String[] segments = channel.split(":", 2);
         return segments.length == 2 ? segments[1] : "";
     }

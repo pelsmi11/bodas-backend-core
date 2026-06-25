@@ -89,7 +89,7 @@ public class PhotoService {
         UserDevice userDevice = guestIdentityService.resolveUserDevice(request.getGuestId(), cognitoId);
 
         if (!photoKeyFactory.belongsToGuestAndEvent(request.getS3Key(), event.getToken(), userDevice.getGuestUuid())) {
-            throw CustomErrorException.handlerCustomError("La foto no pertenece al evento o dispositivo indicado", HttpStatus.BAD_REQUEST);
+            throw CustomErrorException.handlerCustomError("Photo does not belong to the specified event or device", HttpStatus.BAD_REQUEST);
         }
 
         s3PhotoValidator.validateUploadedObject(request.getS3Key());

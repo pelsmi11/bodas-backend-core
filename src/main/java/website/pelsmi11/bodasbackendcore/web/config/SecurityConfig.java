@@ -21,6 +21,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/events/*/feed").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/events/*/stream").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/health/feed").permitAll()
+                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
+                        .requestMatchers("/api/v1/admin/**").authenticated()
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))

@@ -1,6 +1,7 @@
 package website.pelsmi11.bodasbackendcore.web.controller;
 
 import org.springframework.http.MediaType;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -18,6 +19,7 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/api/v1/events")
+@Tag(name = "Event Feed", description = "Approved photo feed snapshot and live SSE stream")
 public class EventFeedController {
 
     private final EventFeedService eventFeedService;

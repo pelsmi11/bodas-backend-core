@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import website.pelsmi11.bodasbackendcore.domain.dto.ApiResponse;
 
 import java.util.LinkedHashMap;
@@ -20,6 +21,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/v1/health")
+@Tag(name = "Health", description = "Feed stack health check (Redis + listener)")
 public class FeedHealthController {
 
     private final RedisConnectionFactory redisConnectionFactory;

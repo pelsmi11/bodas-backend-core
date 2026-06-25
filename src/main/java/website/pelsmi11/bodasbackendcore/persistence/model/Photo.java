@@ -63,5 +63,15 @@ public class Photo {
     @Column(name = "uploaded_at")
     private OffsetDateTime uploadedAt;
 
+    @Column(name = "moderated_at")
+    private OffsetDateTime moderatedAt;
+
+    @Size(max = 255)
+    @Column(name = "moderated_by")
+    private String moderatedBy;
+
+    @Column(name = "deleted_at")
+    private OffsetDateTime deletedAt;
+
 
 }

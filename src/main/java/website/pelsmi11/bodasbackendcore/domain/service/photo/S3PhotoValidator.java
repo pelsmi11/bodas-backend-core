@@ -39,7 +39,7 @@ public class S3PhotoValidator {
      */
     public void validateContentType(String contentType) {
         if (!ALLOWED_CONTENT_TYPES.contains(contentType)) {
-            throw CustomErrorException.handlerCustomError("Formato de imagen no soportado", HttpStatus.BAD_REQUEST);
+            throw CustomErrorException.handlerCustomError("Unsupported image format", HttpStatus.BAD_REQUEST);
         }
     }
 
@@ -55,17 +55,17 @@ public class S3PhotoValidator {
             );
 
             if (object.contentLength() <= 0) {
-                throw CustomErrorException.handlerCustomError("La foto subida esta vacia", HttpStatus.BAD_REQUEST);
+                throw CustomErrorException.handlerCustomError("Uploaded photo is empty", HttpStatus.BAD_REQUEST);
             }
 
             if (object.contentLength() > maxUploadSizeBytes) {
-                throw CustomErrorException.handlerCustomError("La foto excede el tamano maximo permitido", HttpStatus.BAD_REQUEST);
+                throw CustomErrorException.handlerCustomError("Photo exceeds maximum allowed size", HttpStatus.BAD_REQUEST);
             }
 
             validateContentType(object.contentType());
         } catch (S3Exception exception) {
             if (exception.statusCode() == 404) {
-                throw CustomErrorException.handlerCustomError("La foto no existe en S3", HttpStatus.NOT_FOUND);
+                throw CustomErrorException.handlerCustomError("Photo does not exist in S3", HttpStatus.NOT_FOUND);
             }
             throw exception;
         }

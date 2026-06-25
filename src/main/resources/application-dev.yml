@@ -1,0 +1,14 @@
+spring:
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+
+# Enable Swagger UI in dev profile
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
