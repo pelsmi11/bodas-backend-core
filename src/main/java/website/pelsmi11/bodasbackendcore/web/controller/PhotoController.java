@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import website.pelsmi11.bodasbackendcore.domain.dto.ApiResponse;
 import website.pelsmi11.bodasbackendcore.domain.dto.PhotoConfirmRequest;
+import website.pelsmi11.bodasbackendcore.domain.dto.PhotoConfirmationResponse;
 import website.pelsmi11.bodasbackendcore.domain.dto.UploadUrlRequest;
 import website.pelsmi11.bodasbackendcore.domain.dto.UploadUrlResponse;
 import website.pelsmi11.bodasbackendcore.domain.service.PhotoService;
@@ -49,12 +50,11 @@ public class PhotoController {
      * Confirms the upload and creates a moderation-pending photo record.
      */
     @PostMapping("/confirm")
-    public ApiResponse<String> confirmUpload(
+    public ApiResponse<PhotoConfirmationResponse> confirmUpload(
             @Valid @RequestBody PhotoConfirmRequest request,
             @AuthenticationPrincipal Jwt jwt
     ) {
-        photoService.registerPendingPhoto(request, getCognitoId(jwt));
-        return ApiResponse.ok("Photo registered successfully. Pending moderation.");
+        return ApiResponse.ok(photoService.registerPendingPhoto(request, getCognitoId(jwt)));
     }
 
     private String getCognitoId(Jwt jwt) {

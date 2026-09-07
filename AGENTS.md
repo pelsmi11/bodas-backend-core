@@ -124,8 +124,8 @@ The `.dockerignore` excludes `build/`, `.gradle/`, `.env`, `.idea/`, and other n
 | `S3_BUCKET_NAME` | S3 bucket for photo uploads |
 | `COGNITO_ISSUER_URI` | Cognito JWT validation |
 | `REDIS_HOST`, `REDIS_PORT` | Redis host (required for `prod` profile, optional for `dev`) |
-| `WEBHOOK_SECRET` | Moderation webhook validation |
-| `MODERATION_SECRET_NAME` | AWS Secrets Manager for moderation |
+| `WEBHOOK_PARAMETER_PATH` | SSM Parameter Store path containing `moderation-webhook` (default: `/bodas/backend/`) |
+| `WEBHOOK_SECRET` | Test-only fallback when no runtime profile imports Parameter Store |
 | `APP_REDIS_LISTENER_ENABLED` | Set to `false` to disable Redis pub/sub listener (default: `true`) |
 
 See `.env.example` for template values.
@@ -197,13 +197,14 @@ website.pelsmi11.bodasbackendcore
 
 ## API Endpoints
 
-### Public Endpoints (6) — no JWT required
+### Public Endpoints (7) — no JWT required
 
 | Method | Path | Description |
 |--------|------|-------------|
+| GET | `/api/v1/events/{eventToken}` | Public details for an active event |
 | POST | `/api/v1/photos/presigned-url` | Generate S3 signed PUT URL for guest upload |
-| POST | `/api/v1/photos/confirm` | Confirm upload + persist pending photo record |
-| GET | `/api/v1/events/{eventToken}/feed` | Initial snapshot of approved photos |
+| POST | `/api/v1/photos/confirm` | Idempotently confirm upload + persist pending photo record |
+| GET | `/api/v1/events/{eventToken}/feed` | Latest 120 approved photos with signed read URLs |
 | GET | `/api/v1/events/{eventToken}/stream` | SSE live stream of new approved photos |
 | GET | `/api/v1/health/feed` | Redis + listener health check |
 | POST | `/api/v1/webhooks/moderation` | Lambda moderation callback (X-Webhook-Secret validated) |
@@ -344,7 +345,7 @@ SELECT * FROM flyway_schema_history ORDER BY installed_rank;
 | Security | Spring Security OAuth2 Resource Server (Cognito JWT) |
 | Persistence | Spring Data JPA + PostgreSQL (Neon) |
 | Cache/PubSub | Spring Data Redis (ElastiCache in prod, Docker in dev) |
-| AWS | Spring Cloud AWS 3.2.1 (S3, Secrets Manager) |
+| AWS | Spring Cloud AWS 3.2.1 (S3, SSM Parameter Store) |
 | Build | Gradle (Kotlin DSL) |
 | Test | JUnit 5 + Mockito + AssertJ + MockMvc + JaCoCo |
 | Containerization | Docker (multi-stage Dockerfile) + Docker Compose (Redis only) |

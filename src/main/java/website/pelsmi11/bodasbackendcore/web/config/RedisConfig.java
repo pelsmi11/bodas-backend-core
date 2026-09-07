@@ -8,7 +8,8 @@ import org.springframework.data.redis.connection.MessageListener;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.listener.PatternTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
-import website.pelsmi11.bodasbackendcore.domain.dto.PhotoFeedDto;
+import website.pelsmi11.bodasbackendcore.domain.dto.PhotoFeedEvent;
+import website.pelsmi11.bodasbackendcore.domain.service.feed.PhotoFeedMapper;
 import website.pelsmi11.bodasbackendcore.domain.service.feed.EventFeedStreamService;
 
 import java.nio.charset.StandardCharsets;
@@ -23,6 +24,7 @@ public class RedisConfig {
     @ConditionalOnProperty(name = "app.redis.listener.enabled", havingValue = "true", matchIfMissing = true)
     MessageListener feedMessageListener(
             EventFeedStreamService eventFeedStreamService,
+            PhotoFeedMapper photoFeedMapper,
             ObjectMapper objectMapper
     ) {
         return (message, pattern) -> {
@@ -31,8 +33,8 @@ public class RedisConfig {
                 String body = new String(message.getBody(), StandardCharsets.UTF_8);
                 String eventToken = extractEventToken(channel);
 
-                PhotoFeedDto payload = objectMapper.readValue(body, PhotoFeedDto.class);
-                eventFeedStreamService.dispatchNewPhoto(eventToken, payload);
+                PhotoFeedEvent payload = objectMapper.readValue(body, PhotoFeedEvent.class);
+                eventFeedStreamService.dispatchNewPhoto(eventToken, photoFeedMapper.toPublicDto(payload));
             } catch (Exception ignored) {
                 // Intentionally ignore malformed messages to keep listener resilient.
             }

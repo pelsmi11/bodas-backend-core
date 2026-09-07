@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
-import website.pelsmi11.bodasbackendcore.domain.dto.PhotoFeedDto;
+import website.pelsmi11.bodasbackendcore.domain.dto.PhotoFeedEvent;
 import website.pelsmi11.bodasbackendcore.domain.exception.CustomErrorException;
 import website.pelsmi11.bodasbackendcore.persistence.model.Photo;
 
@@ -18,16 +18,16 @@ public class PhotoFeedPublisher {
 
     private static final String FEED_CHANNEL_PREFIX = "event-feed:";
 
-    private final EventFeedService eventFeedService;
+    private final PhotoFeedMapper photoFeedMapper;
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
 
     public PhotoFeedPublisher(
-            EventFeedService eventFeedService,
+            PhotoFeedMapper photoFeedMapper,
             StringRedisTemplate redisTemplate,
             ObjectMapper objectMapper
     ) {
-        this.eventFeedService = eventFeedService;
+        this.photoFeedMapper = photoFeedMapper;
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
     }
@@ -37,7 +37,7 @@ public class PhotoFeedPublisher {
      */
     public void publishApprovedPhoto(Photo photo) {
         try {
-            PhotoFeedDto payload = eventFeedService.toDto(photo);
+            PhotoFeedEvent payload = photoFeedMapper.toInternalEvent(photo);
             String jsonMessage = objectMapper.writeValueAsString(payload);
             String channel = FEED_CHANNEL_PREFIX + photo.getEvent().getToken();
             redisTemplate.convertAndSend(channel, jsonMessage);

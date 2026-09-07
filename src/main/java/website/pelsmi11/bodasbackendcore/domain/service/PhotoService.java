@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import website.pelsmi11.bodasbackendcore.domain.dto.PhotoConfirmRequest;
+import website.pelsmi11.bodasbackendcore.domain.dto.PhotoConfirmationResponse;
 import website.pelsmi11.bodasbackendcore.domain.dto.UploadUrlResponse;
 import website.pelsmi11.bodasbackendcore.domain.exception.CustomErrorException;
 import website.pelsmi11.bodasbackendcore.domain.service.photo.EventResolver;
@@ -19,6 +20,7 @@ import website.pelsmi11.bodasbackendcore.persistence.model.UserDevice;
 import website.pelsmi11.bodasbackendcore.persistence.repository.PhotoRepository;
 
 import java.time.Duration;
+import java.util.UUID;
 
 /**
  * Application service orchestrating the guest upload + confirmation flow.
@@ -84,7 +86,7 @@ public class PhotoService {
      * Confirms a completed upload and persists a pending moderation record.
      */
     @Transactional
-    public void registerPendingPhoto(PhotoConfirmRequest request, String cognitoId) {
+    public PhotoConfirmationResponse registerPendingPhoto(PhotoConfirmRequest request, String cognitoId) {
         Event event = eventResolver.findActiveEvent(request.getEventToken());
         UserDevice userDevice = guestIdentityService.resolveUserDevice(request.getGuestId(), cognitoId);
 
@@ -94,13 +96,22 @@ public class PhotoService {
 
         s3PhotoValidator.validateUploadedObject(request.getS3Key());
 
-        Photo photo = new Photo();
-        photo.setEvent(event);
-        photo.setUser(userDevice.getUser());
-        photo.setDevice(userDevice);
-        photo.setS3Key(request.getS3Key());
-        photo.setStatus(ModerationStatus.PENDING);
+        UUID photoId = UUID.randomUUID();
+        photoRepository.insertPendingIfAbsent(
+                photoId,
+                event.getId(),
+                userDevice.getUser().getId(),
+                userDevice.getGuestUuid(),
+                request.getS3Key()
+        );
 
-        photoRepository.save(photo);
+        Photo photo = photoRepository.findFirstByS3Key(request.getS3Key())
+                .orElseThrow(() -> CustomErrorException.handlerCustomError(
+                        "Failed to register uploaded photo",
+                        HttpStatus.INTERNAL_SERVER_ERROR
+                ));
+
+        ModerationStatus status = photo.getStatus() != null ? photo.getStatus() : ModerationStatus.PENDING;
+        return new PhotoConfirmationResponse(photo.getId().toString(), status);
     }
 }

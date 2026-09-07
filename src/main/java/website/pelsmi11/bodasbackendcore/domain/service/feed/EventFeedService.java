@@ -1,12 +1,14 @@
 package website.pelsmi11.bodasbackendcore.domain.service.feed;
 
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import website.pelsmi11.bodasbackendcore.domain.dto.PhotoFeedDto;
+import website.pelsmi11.bodasbackendcore.domain.dto.PublicEventDto;
+import website.pelsmi11.bodasbackendcore.domain.service.photo.EventResolver;
 import website.pelsmi11.bodasbackendcore.persistence.model.ModerationStatus;
-import website.pelsmi11.bodasbackendcore.persistence.model.Photo;
 import website.pelsmi11.bodasbackendcore.persistence.repository.PhotoRepository;
 
-import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
@@ -16,32 +18,44 @@ import java.util.List;
 public class EventFeedService {
 
     private final PhotoRepository photoRepository;
+    private final EventResolver eventResolver;
+    private final PhotoFeedMapper photoFeedMapper;
+    private final int feedLimit;
 
-    public EventFeedService(PhotoRepository photoRepository) {
+    public EventFeedService(
+            PhotoRepository photoRepository,
+            EventResolver eventResolver,
+            PhotoFeedMapper photoFeedMapper,
+            @Value("${app.photos.feed-limit:120}") int feedLimit
+    ) {
         this.photoRepository = photoRepository;
+        this.eventResolver = eventResolver;
+        this.photoFeedMapper = photoFeedMapper;
+        this.feedLimit = feedLimit;
+    }
+
+    public PublicEventDto getEventDetails(String eventToken) {
+        var event = eventResolver.findActiveEvent(eventToken);
+        return new PublicEventDto(
+                event.getToken(),
+                event.getName(),
+                event.getEventDate(),
+                event.getDescription()
+        );
     }
 
     /**
      * Returns approved photos for an event ordered by upload time descending.
      */
     public List<PhotoFeedDto> getApprovedFeed(String eventToken) {
-        return photoRepository.findByEventTokenAndStatusOrderByUploadedAtDesc(eventToken, ModerationStatus.APPROVED)
+        eventResolver.findActiveEvent(eventToken);
+        return photoRepository.findByEventTokenAndStatusAndDeletedAtIsNullOrderByUploadedAtDesc(
+                        eventToken,
+                        ModerationStatus.APPROVED,
+                        PageRequest.of(0, feedLimit)
+                )
                 .stream()
-                .map(this::toDto)
+                .map(photoFeedMapper::toPublicDto)
                 .toList();
-    }
-
-    /**
-     * Maps a Photo entity into transport payload used by feed and stream.
-     */
-    public PhotoFeedDto toDto(Photo photo) {
-        String userName = photo.getUser() != null ? photo.getUser().getName() : null;
-        OffsetDateTime uploadedAt = photo.getUploadedAt();
-        return new PhotoFeedDto(
-                photo.getId().toString(),
-                photo.getS3Key(),
-                userName,
-                uploadedAt != null ? uploadedAt.toString() : null
-        );
     }
 }

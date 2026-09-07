@@ -10,6 +10,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 import website.pelsmi11.bodasbackendcore.TestDataFactory;
 import website.pelsmi11.bodasbackendcore.domain.dto.PhotoConfirmRequest;
+import website.pelsmi11.bodasbackendcore.domain.dto.PhotoConfirmationResponse;
 import website.pelsmi11.bodasbackendcore.domain.dto.UploadUrlResponse;
 import website.pelsmi11.bodasbackendcore.domain.exception.CustomErrorException;
 import website.pelsmi11.bodasbackendcore.domain.service.photo.EventResolver;
@@ -24,6 +25,8 @@ import website.pelsmi11.bodasbackendcore.persistence.repository.PhotoRepository;
 import java.net.URL;
 import java.time.Duration;
 import java.util.UUID;
+import java.util.Optional;
+import website.pelsmi11.bodasbackendcore.persistence.model.ModerationStatus;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -90,7 +93,7 @@ class PhotoServiceTest {
     }
 
     @Test
-    void registerPendingPhoto_happyPath_persistsPhoto() {
+    void registerPendingPhoto_happyPath_insertsPhotoAndReturnsPending() {
         Event event = TestDataFactory.event();
         UserDevice device = TestDataFactory.userDevice();
         UUID guestUuid = device.getGuestUuid();
@@ -102,10 +105,38 @@ class PhotoServiceTest {
         when(eventResolver.findActiveEvent("ev123456")).thenReturn(event);
         when(guestIdentityService.resolveUserDevice(guestUuid, null)).thenReturn(device);
         when(photoKeyFactory.belongsToGuestAndEvent(request.getS3Key(), "ev123456", guestUuid)).thenReturn(true);
+        Photo stored = TestDataFactory.photo();
+        stored.setS3Key(request.getS3Key());
+        stored.setStatus(ModerationStatus.PENDING);
+        when(photoRepository.findFirstByS3Key(request.getS3Key())).thenReturn(Optional.of(stored));
 
-        photoService.registerPendingPhoto(request, null);
+        PhotoConfirmationResponse response = photoService.registerPendingPhoto(request, null);
 
-        verify(photoRepository).save(any(Photo.class));
+        verify(photoRepository).insertPendingIfAbsent(
+                any(UUID.class), eq(event.getId()), eq(device.getUser().getId()), eq(guestUuid), eq(request.getS3Key())
+        );
+        assertThat(response.photoId()).isEqualTo(stored.getId().toString());
+        assertThat(response.status()).isEqualTo(ModerationStatus.PENDING);
+    }
+
+    @Test
+    void registerPendingPhoto_retry_returnsExistingPhoto() {
+        Event event = TestDataFactory.event();
+        UserDevice device = TestDataFactory.userDevice();
+        PhotoConfirmRequest request = requestFor(device.getGuestUuid());
+        Photo existing = TestDataFactory.photo();
+        existing.setS3Key(request.getS3Key());
+        existing.setStatus(ModerationStatus.APPROVED);
+        when(eventResolver.findActiveEvent("ev123456")).thenReturn(event);
+        when(guestIdentityService.resolveUserDevice(device.getGuestUuid(), null)).thenReturn(device);
+        when(photoKeyFactory.belongsToGuestAndEvent(request.getS3Key(), "ev123456", device.getGuestUuid())).thenReturn(true);
+        when(photoRepository.insertPendingIfAbsent(any(), any(), any(), any(), any())).thenReturn(0);
+        when(photoRepository.findFirstByS3Key(request.getS3Key())).thenReturn(Optional.of(existing));
+
+        PhotoConfirmationResponse response = photoService.registerPendingPhoto(request, null);
+
+        assertThat(response.photoId()).isEqualTo(existing.getId().toString());
+        assertThat(response.status()).isEqualTo(ModerationStatus.APPROVED);
     }
 
     @Test
@@ -126,7 +157,7 @@ class PhotoServiceTest {
                 .isInstanceOf(CustomErrorException.class)
                 .hasMessageContaining("does not belong");
 
-        verify(photoRepository, never()).save(any());
+        verify(photoRepository, never()).insertPendingIfAbsent(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -149,6 +180,14 @@ class PhotoServiceTest {
                 .isInstanceOf(CustomErrorException.class)
                 .hasMessageContaining("does not exist in S3");
 
-        verify(photoRepository, never()).save(any());
+        verify(photoRepository, never()).insertPendingIfAbsent(any(), any(), any(), any(), any());
+    }
+
+    private PhotoConfirmRequest requestFor(UUID guestUuid) {
+        PhotoConfirmRequest request = new PhotoConfirmRequest();
+        request.setEventToken("ev123456");
+        request.setGuestId(guestUuid);
+        request.setS3Key("uploads/ev123456/" + guestUuid + "/photo_abc.jpg");
+        return request;
     }
 }

@@ -9,7 +9,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import website.pelsmi11.bodasbackendcore.TestDataFactory;
-import website.pelsmi11.bodasbackendcore.domain.dto.PhotoFeedDto;
+import website.pelsmi11.bodasbackendcore.domain.dto.PhotoFeedEvent;
 import website.pelsmi11.bodasbackendcore.domain.exception.CustomErrorException;
 import website.pelsmi11.bodasbackendcore.persistence.model.Photo;
 
@@ -20,7 +20,7 @@ import static org.mockito.Mockito.*;
 class PhotoFeedPublisherTest {
 
     @Mock
-    private EventFeedService eventFeedService;
+    private PhotoFeedMapper photoFeedMapper;
     @Mock
     private StringRedisTemplate redisTemplate;
     @Mock
@@ -32,8 +32,8 @@ class PhotoFeedPublisherTest {
     @Test
     void publishApprovedPhoto_happyPath_publishesToRedisChannel() throws Exception {
         Photo photo = TestDataFactory.photo();
-        PhotoFeedDto dto = new PhotoFeedDto("photo-id", "key", "user", "2026-01-01T00:00:00Z");
-        when(eventFeedService.toDto(photo)).thenReturn(dto);
+        PhotoFeedEvent dto = new PhotoFeedEvent("photo-id", "key", "2026-01-01T00:00:00Z");
+        when(photoFeedMapper.toInternalEvent(photo)).thenReturn(dto);
         when(objectMapper.writeValueAsString(dto)).thenReturn("{\"photoId\":\"photo-id\"}");
 
         photoFeedPublisher.publishApprovedPhoto(photo);
@@ -44,8 +44,8 @@ class PhotoFeedPublisherTest {
     @Test
     void publishApprovedPhoto_serializationFails_throws500() throws Exception {
         Photo photo = TestDataFactory.photo();
-        PhotoFeedDto dto = new PhotoFeedDto("photo-id", "key", "user", "2026-01-01T00:00:00Z");
-        when(eventFeedService.toDto(photo)).thenReturn(dto);
+        PhotoFeedEvent dto = new PhotoFeedEvent("photo-id", "key", "2026-01-01T00:00:00Z");
+        when(photoFeedMapper.toInternalEvent(photo)).thenReturn(dto);
         when(objectMapper.writeValueAsString(dto)).thenThrow(new JsonProcessingException("boom") {
         });
 

@@ -5,8 +5,7 @@ package website.pelsmi11.bodasbackendcore.domain.dto;
  */
 public record PhotoFeedDto(
         String photoId,
-        String s3Key,
-        String userName,
+        String imageUrl,
         String uploadedAt
 ) {
 }

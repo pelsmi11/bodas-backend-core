@@ -8,6 +8,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import website.pelsmi11.bodasbackendcore.TestDataFactory;
 import website.pelsmi11.bodasbackendcore.domain.exception.CustomErrorException;
 import website.pelsmi11.bodasbackendcore.persistence.model.Event;
+import website.pelsmi11.bodasbackendcore.persistence.model.EventStatus;
 import website.pelsmi11.bodasbackendcore.persistence.repository.EventRepository;
 
 import java.util.Optional;
@@ -50,6 +51,17 @@ class EventResolverTest {
         when(eventRepository.findFirstByToken("nonexistent")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> eventResolver.findActiveEvent("nonexistent"))
+                .isInstanceOf(CustomErrorException.class)
+                .hasMessage("Event not found or inactive");
+    }
+
+    @Test
+    void findActiveEvent_whenArchived_throws404() {
+        Event event = TestDataFactory.event();
+        event.setStatus(EventStatus.ARCHIVED);
+        when(eventRepository.findFirstByToken("ev123456")).thenReturn(Optional.of(event));
+
+        assertThatThrownBy(() -> eventResolver.findActiveEvent("ev123456"))
                 .isInstanceOf(CustomErrorException.class)
                 .hasMessage("Event not found or inactive");
     }

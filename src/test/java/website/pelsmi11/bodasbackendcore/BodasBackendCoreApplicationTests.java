@@ -22,8 +22,7 @@ import website.pelsmi11.bodasbackendcore.persistence.repository.UserRepository;
         "S3_BUCKET_NAME=test-bucket",
         "REDIS_HOST=127.0.0.1",
         "app.redis.listener.enabled=false",
-        "WEBHOOK_SECRET=test-webhook-secret",
-        "MODERATION_SECRET_NAME=test-secret"
+        "WEBHOOK_SECRET=test-webhook-secret"
 })
 class BodasBackendCoreApplicationTests {
 

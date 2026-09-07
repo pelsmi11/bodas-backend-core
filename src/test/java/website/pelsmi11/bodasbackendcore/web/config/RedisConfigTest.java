@@ -11,6 +11,8 @@ import org.mockito.quality.Strictness;
 import org.springframework.data.redis.connection.Message;
 import org.springframework.data.redis.connection.MessageListener;
 import website.pelsmi11.bodasbackendcore.domain.dto.PhotoFeedDto;
+import website.pelsmi11.bodasbackendcore.domain.dto.PhotoFeedEvent;
+import website.pelsmi11.bodasbackendcore.domain.service.feed.PhotoFeedMapper;
 import website.pelsmi11.bodasbackendcore.domain.service.feed.EventFeedStreamService;
 
 import java.nio.charset.StandardCharsets;
@@ -28,6 +30,8 @@ class RedisConfigTest {
     private EventFeedStreamService eventFeedStreamService;
     @Mock
     private ObjectMapper objectMapper;
+    @Mock
+    private PhotoFeedMapper photoFeedMapper;
 
     private RedisConfig redisConfig;
     private MessageListener feedMessageListener;
@@ -35,7 +39,7 @@ class RedisConfigTest {
     @BeforeEach
     void setUp() {
         redisConfig = new RedisConfig();
-        feedMessageListener = redisConfig.feedMessageListener(eventFeedStreamService, objectMapper);
+        feedMessageListener = redisConfig.feedMessageListener(eventFeedStreamService, photoFeedMapper, objectMapper);
     }
 
     @Test
@@ -43,8 +47,10 @@ class RedisConfigTest {
         Message message = mock(Message.class);
         when(message.getChannel()).thenReturn("event-feed:ev123456".getBytes(StandardCharsets.UTF_8));
         when(message.getBody()).thenReturn("{\"photoId\":\"id\"}".getBytes(StandardCharsets.UTF_8));
-        PhotoFeedDto dto = new PhotoFeedDto("id", "key", "user", "2026-01-01T00:00:00Z");
-        when(objectMapper.readValue(any(String.class), eq(PhotoFeedDto.class))).thenReturn(dto);
+        PhotoFeedEvent internalEvent = new PhotoFeedEvent("id", "key", "2026-01-01T00:00:00Z");
+        PhotoFeedDto dto = new PhotoFeedDto("id", "https://s3.example.com/signed", "2026-01-01T00:00:00Z");
+        when(objectMapper.readValue(any(String.class), eq(PhotoFeedEvent.class))).thenReturn(internalEvent);
+        when(photoFeedMapper.toPublicDto(internalEvent)).thenReturn(dto);
 
         feedMessageListener.onMessage(message, null);
 
@@ -56,7 +62,7 @@ class RedisConfigTest {
         Message message = mock(Message.class);
         when(message.getChannel()).thenReturn("event-feed:ev123456".getBytes(StandardCharsets.UTF_8));
         when(message.getBody()).thenReturn("not-json".getBytes(StandardCharsets.UTF_8));
-        when(objectMapper.readValue(any(String.class), eq(PhotoFeedDto.class)))
+        when(objectMapper.readValue(any(String.class), eq(PhotoFeedEvent.class)))
                 .thenThrow(new com.fasterxml.jackson.core.JsonProcessingException("bad") {
                 });
 
@@ -70,8 +76,10 @@ class RedisConfigTest {
         Message message = mock(Message.class);
         when(message.getChannel()).thenReturn("unknown-channel".getBytes(StandardCharsets.UTF_8));
         when(message.getBody()).thenReturn("{\"photoId\":\"id\"}".getBytes(StandardCharsets.UTF_8));
-        PhotoFeedDto dto = new PhotoFeedDto("id", "key", "user", "2026-01-01T00:00:00Z");
-        when(objectMapper.readValue(any(String.class), eq(PhotoFeedDto.class))).thenReturn(dto);
+        PhotoFeedEvent internalEvent = new PhotoFeedEvent("id", "key", "2026-01-01T00:00:00Z");
+        PhotoFeedDto dto = new PhotoFeedDto("id", "https://s3.example.com/signed", "2026-01-01T00:00:00Z");
+        when(objectMapper.readValue(any(String.class), eq(PhotoFeedEvent.class))).thenReturn(internalEvent);
+        when(photoFeedMapper.toPublicDto(internalEvent)).thenReturn(dto);
 
         feedMessageListener.onMessage(message, null);
 

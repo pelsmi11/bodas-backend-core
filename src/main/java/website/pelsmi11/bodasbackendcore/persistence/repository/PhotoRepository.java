@@ -18,7 +18,25 @@ public interface PhotoRepository extends JpaRepository<Photo, UUID> {
 
     Optional<Photo> findFirstByS3Key(String s3Key);
 
-    List<Photo> findByEventTokenAndStatusOrderByUploadedAtDesc(String eventToken, ModerationStatus status);
+    List<Photo> findByEventTokenAndStatusAndDeletedAtIsNullOrderByUploadedAtDesc(
+            String eventToken,
+            ModerationStatus status,
+            Pageable pageable
+    );
+
+    @Modifying
+    @Query(value = """
+            INSERT INTO photos (id, event_id, user_id, device_uuid, s3_key, status)
+            VALUES (:id, :eventId, :userId, :deviceUuid, :s3Key, 'PENDING'::moderation_status)
+            ON CONFLICT (s3_key) DO NOTHING
+            """, nativeQuery = true)
+    int insertPendingIfAbsent(
+            @Param("id") UUID id,
+            @Param("eventId") Integer eventId,
+            @Param("userId") Integer userId,
+            @Param("deviceUuid") UUID deviceUuid,
+            @Param("s3Key") String s3Key
+    );
 
     Page<Photo> findByEventIdAndDeletedAtIsNullOrderByUploadedAtDesc(Integer eventId, Pageable pageable);
 

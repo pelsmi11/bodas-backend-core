@@ -52,7 +52,7 @@ dependencies {
 
     // 4. AWS Integration
     implementation 'io.awspring.cloud:spring-cloud-aws-starter-s3'
-    implementation 'io.awspring.cloud:spring-cloud-aws-starter-secrets-manager'
+    implementation 'io.awspring.cloud:spring-cloud-aws-starter-parameter-store'
     implementation 'software.amazon.awssdk:sso'
     implementation 'software.amazon.awssdk:ssooidc'
 

@@ -33,7 +33,7 @@ class EventFeedStreamServiceTest {
 
     @Test
     void dispatchNewPhoto_noEmitters_doesNothing() {
-        PhotoFeedDto payload = new PhotoFeedDto("id", "key", "user", "2026-01-01T00:00:00Z");
+        PhotoFeedDto payload = payload();
 
         service.dispatchNewPhoto("nonexistent", payload);
 
@@ -44,7 +44,7 @@ class EventFeedStreamServiceTest {
     void dispatchNewPhoto_withEmitters_keepsEmittersAfterSuccessfulSend() {
         service.subscribe("ev123456");
         service.subscribe("ev123456");
-        PhotoFeedDto payload = new PhotoFeedDto("id", "key", "user", "2026-01-01T00:00:00Z");
+        PhotoFeedDto payload = payload();
 
         service.dispatchNewPhoto("ev123456", payload);
 
@@ -55,7 +55,7 @@ class EventFeedStreamServiceTest {
     void dispatchNewPhoto_failingEmitter_removesFromList() throws Exception {
         service.subscribe("ev123456");
         replaceWithFailingEmitter("ev123456");
-        PhotoFeedDto payload = new PhotoFeedDto("id", "key", "user", "2026-01-01T00:00:00Z");
+        PhotoFeedDto payload = payload();
 
         service.dispatchNewPhoto("ev123456", payload);
 
@@ -66,7 +66,7 @@ class EventFeedStreamServiceTest {
     void dispatchNewPhoto_allEmittersFail_removesEventKey() throws Exception {
         service.subscribe("ev123456");
         replaceWithFailingEmitter("ev123456");
-        PhotoFeedDto payload = new PhotoFeedDto("id", "key", "user", "2026-01-01T00:00:00Z");
+        PhotoFeedDto payload = payload();
 
         service.dispatchNewPhoto("ev123456", payload);
 
@@ -76,7 +76,7 @@ class EventFeedStreamServiceTest {
     @Test
     void dispatchNewPhoto_emptyEmitterList_doesNothing() {
         getEmittersMap().put("ev123456", new java.util.concurrent.CopyOnWriteArrayList<>());
-        PhotoFeedDto payload = new PhotoFeedDto("id", "key", "user", "2026-01-01T00:00:00Z");
+        PhotoFeedDto payload = payload();
 
         service.dispatchNewPhoto("ev123456", payload);
 
@@ -87,6 +87,20 @@ class EventFeedStreamServiceTest {
         List<SseEmitter> emitters = getEmittersMap().get(eventToken);
         emitters.clear();
         emitters.add(new FailingSseEmitter());
+    }
+
+    @Test
+    void sendHeartbeat_failingEmitter_removesIt() throws Exception {
+        service.subscribe("ev123456");
+        replaceWithFailingEmitter("ev123456");
+
+        service.sendHeartbeat();
+
+        assertThat(getEmittersMap()).doesNotContainKey("ev123456");
+    }
+
+    private PhotoFeedDto payload() {
+        return new PhotoFeedDto("id", "https://s3.example.com/signed", "2026-01-01T00:00:00Z");
     }
 
     @SuppressWarnings("unchecked")

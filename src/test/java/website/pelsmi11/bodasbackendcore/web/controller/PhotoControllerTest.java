@@ -13,6 +13,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import website.pelsmi11.bodasbackendcore.TestDataFactory;
 import website.pelsmi11.bodasbackendcore.domain.dto.PhotoConfirmRequest;
+import website.pelsmi11.bodasbackendcore.domain.dto.PhotoConfirmationResponse;
 import website.pelsmi11.bodasbackendcore.domain.dto.UploadUrlResponse;
 import website.pelsmi11.bodasbackendcore.domain.exception.CustomErrorException;
 import website.pelsmi11.bodasbackendcore.domain.service.PhotoService;
@@ -20,6 +21,7 @@ import website.pelsmi11.bodasbackendcore.web.config.SecurityConfig;
 import website.pelsmi11.bodasbackendcore.web.exception.GlobalExceptionHandler;
 
 import java.util.UUID;
+import website.pelsmi11.bodasbackendcore.persistence.model.ModerationStatus;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -89,12 +91,16 @@ class PhotoControllerTest {
         request.setEventToken("ev123456");
         request.setGuestId(UUID.fromString("11111111-1111-1111-1111-111111111111"));
         request.setS3Key("uploads/ev123456/guest/photo.jpg");
+        when(photoService.registerPendingPhoto(any(), any()))
+                .thenReturn(new PhotoConfirmationResponse("photo-1", ModerationStatus.PENDING));
 
         mockMvc.perform(post("/api/v1/photos/confirm")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.photoId").value("photo-1"))
+                .andExpect(jsonPath("$.data.status").value("PENDING"));
     }
 
     @Test

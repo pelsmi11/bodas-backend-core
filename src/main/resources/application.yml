@@ -33,8 +33,6 @@ spring:
           name: ${AWS_PROFILE}
       s3:
         region: ${AWS_REGION}
-      secretsmanager:
-        enabled: true
 
   security:
     oauth2:
@@ -53,10 +51,16 @@ app:
       enabled: true
   s3:
     bucket-name: ${S3_BUCKET_NAME}
+    download-url-ttl: ${PHOTO_DOWNLOAD_URL_TTL:PT1H}
+  photos:
+    feed-limit: ${PHOTO_FEED_LIMIT:120}
+    max-upload-size-bytes: ${PHOTO_MAX_UPLOAD_SIZE_BYTES:26214400}
+  feed:
+    heartbeat-ms: ${PHOTO_FEED_HEARTBEAT_MS:25000}
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,https://bodas.pelsmi.website}
   webhook:
-    secret: ${WEBHOOK_SECRET}
-  secrets:
-    moderation-name: ${MODERATION_SECRET_NAME}
+    secret: ${moderation-webhook:${WEBHOOK_SECRET:}}
 
 # Swagger / OpenAPI disabled by default; enabled in dev profile (application-dev.yml)
 springdoc:

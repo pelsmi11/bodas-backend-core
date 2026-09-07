@@ -1,4 +1,6 @@
 spring:
+  config:
+    import: aws-parameterstore:${WEBHOOK_PARAMETER_PATH:/bodas/backend/}
   data:
     redis:
       host: ${REDIS_HOST:<elastichache-endpoint>}

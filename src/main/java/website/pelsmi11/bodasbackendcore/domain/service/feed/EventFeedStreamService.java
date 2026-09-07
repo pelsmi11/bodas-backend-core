@@ -1,6 +1,7 @@
 package website.pelsmi11.bodasbackendcore.domain.service.feed;
 
 import org.springframework.stereotype.Service;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import website.pelsmi11.bodasbackendcore.domain.dto.PhotoFeedDto;
 
@@ -52,6 +53,23 @@ public class EventFeedStreamService {
                 removeEmitter(eventToken, emitter);
             }
         }
+    }
+
+    /**
+     * Keeps idle connections alive through proxies and removes stale emitters.
+     */
+    @Scheduled(fixedDelayString = "${app.feed.heartbeat-ms:25000}")
+    void sendHeartbeat() {
+        emittersByEvent.forEach((eventToken, emitters) -> {
+            for (SseEmitter emitter : emitters) {
+                try {
+                    emitter.send(SseEmitter.event().comment("keepalive"));
+                } catch (IOException | IllegalStateException exception) {
+                    emitter.complete();
+                    removeEmitter(eventToken, emitter);
+                }
+            }
+        });
     }
 
     private void removeEmitter(String eventToken, SseEmitter emitter) {

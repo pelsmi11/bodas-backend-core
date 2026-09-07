@@ -4,6 +4,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import website.pelsmi11.bodasbackendcore.domain.exception.CustomErrorException;
 import website.pelsmi11.bodasbackendcore.persistence.model.Event;
+import website.pelsmi11.bodasbackendcore.persistence.model.EventStatus;
 import website.pelsmi11.bodasbackendcore.persistence.repository.EventRepository;
 
 /**
@@ -24,6 +25,7 @@ public class EventResolver {
     public Event findActiveEvent(String eventToken) {
         return eventRepository.findFirstByToken(eventToken)
                 .filter(event -> Boolean.TRUE.equals(event.getIsActive()))
+                .filter(event -> event.getStatus() == EventStatus.ACTIVE)
                 .orElseThrow(() -> CustomErrorException.handlerCustomError("Event not found or inactive", HttpStatus.NOT_FOUND));
     }
 }
