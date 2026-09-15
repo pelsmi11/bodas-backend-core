@@ -11,12 +11,14 @@ import website.pelsmi11.bodasbackendcore.persistence.repository.UserDeviceReposi
 import website.pelsmi11.bodasbackendcore.persistence.repository.UserRepository;
 
 @SpringBootTest(properties = {
+        "spring.main.allow-bean-definition-overriding=true",
         "spring.autoconfigure.exclude=" +
                 "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration," +
                 "org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration," +
                 "org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration," +
                 "org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration",
         "COGNITO_ISSUER_URI=https://example.com/test-issuer",
+        "COGNITO_APP_CLIENT_ID=test-client",
         "AWS_REGION=us-east-1",
         "AWS_PROFILE=test",
         "S3_BUCKET_NAME=test-bucket",
@@ -44,8 +46,30 @@ class BodasBackendCoreApplicationTests {
     @MockitoBean
     private UserDeviceRepository userDeviceRepository;
 
+    @MockitoBean
+    private website.pelsmi11.bodasbackendcore.persistence.repository.EventParticipantRepository eventParticipantRepository;
+
+    // T006-fix: the REAL session services must be registered by component
+    // scanning; only their repository/client dependencies are mocked above and
+    // below (CognitoIdentityProviderClient stays mocked — offline-safe).
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private website.pelsmi11.bodasbackendcore.domain.service.session.CognitoGetUserService cognitoGetUserService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private website.pelsmi11.bodasbackendcore.domain.service.session.SessionBootstrapService sessionBootstrapService;
+
+    @MockitoBean
+    private software.amazon.awssdk.services.cognitoidentityprovider.CognitoIdentityProviderClient cognitoIdentityProviderClient;
+
     @Test
     void contextLoads() {
+    }
+
+    @Test
+    void sessionServicesAreRegisteredByComponentScanning() {
+        org.assertj.core.api.Assertions.assertThat(cognitoGetUserService).isNotNull();
+        org.assertj.core.api.Assertions.assertThat(sessionBootstrapService).isNotNull();
     }
 
 }

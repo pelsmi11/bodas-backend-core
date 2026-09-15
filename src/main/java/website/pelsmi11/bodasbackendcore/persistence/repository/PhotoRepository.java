@@ -57,4 +57,30 @@ public interface PhotoRepository extends JpaRepository<Photo, UUID> {
     @Modifying
     @Query("UPDATE Photo p SET p.deletedAt = :deletedAt WHERE p.id IN :ids AND p.deletedAt IS NULL")
     int softDeleteByIds(@Param("ids") List<UUID> ids, @Param("deletedAt") OffsetDateTime deletedAt);
+
+    // ---- Ownership-scoped queries (admin caller = event admin_id) -----------
+
+    Page<Photo> findByEvent_AdminIdAndDeletedAtIsNullOrderByUploadedAtDesc(String adminId, Pageable pageable);
+
+    Page<Photo> findByEvent_AdminIdAndStatusAndDeletedAtIsNullOrderByUploadedAtDesc(
+            String adminId, ModerationStatus status, Pageable pageable);
+
+    boolean existsByIdAndEvent_AdminId(UUID id, String adminId);
+
+    /** Events where the device uploaded photos (participation reconciliation). */
+    @org.springframework.data.jpa.repository.Query(
+            "SELECT DISTINCT p.event.id FROM Photo p WHERE p.device.guestUuid = :guestUuid AND p.deletedAt IS NULL")
+    List<Integer> findDistinctEventIdsByDeviceUuid(@Param("guestUuid") UUID guestUuid);
+
+    /** T2 transfer: re-point anonymous photos to the account user. */
+    @Modifying
+    @Query("UPDATE Photo p SET p.user.id = :toUserId WHERE p.user.id = :fromUserId")
+    int transferPhotosBetweenUsers(@Param("fromUserId") Integer fromUserId, @Param("toUserId") Integer toUserId);
+
+
+    List<Photo> findByEvent_AdminIdIn(java.util.Collection<String> adminIds);
+
+    long countByEvent_AdminIdAndStatus(String adminId, ModerationStatus status);
+
+    long countByEvent_AdminIdAndDeletedAtIsNotNull(String adminId);
 }

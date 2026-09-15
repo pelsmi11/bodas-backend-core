@@ -14,12 +14,24 @@ public interface UserRepository extends JpaRepository<User, Integer> {
 
     Optional<User> findFirstByCognitoId(String cognitoId);
 
-    Page<User> findAllByOrderByCreatedAtDesc(Pageable pageable);
+    // ---- Ownership-scoped queries (admin caller = participants of administered events) ----
 
-    Page<User> findByRoleOrderByCreatedAtDesc(UserRole role, Pageable pageable);
+    @Query("""
+            SELECT u FROM User u
+            WHERE u.id IN (SELECT ep.user.id FROM EventParticipant ep WHERE ep.event.adminId = :adminId)
+              AND (:role IS NULL OR u.role = :role)
+            ORDER BY u.createdAt DESC
+            """)
+    Page<User> findAdminParticipants(@Param("adminId") String adminId, @org.springframework.lang.Nullable UserRole role, Pageable pageable);
 
-    Page<User> findByNameContainingIgnoreCaseOrEmailContainingIgnoreCaseOrderByCreatedAtDesc(String name, String email, Pageable pageable);
-
-    @Query("SELECT u FROM User u WHERE u.role = :role AND (LOWER(u.name) LIKE LOWER(CONCAT('%', :q, '%')) OR LOWER(u.email) LIKE LOWER(CONCAT('%', :q, '%'))) ORDER BY u.createdAt DESC")
-    Page<User> findByRoleAndSearch(@Param("role") UserRole role, @Param("q") String q, Pageable pageable);
+    @Query("""
+            SELECT u FROM User u
+            WHERE u.id IN (SELECT ep.user.id FROM EventParticipant ep WHERE ep.event.adminId = :adminId)
+              AND (:role IS NULL OR u.role = :role)
+              AND (LOWER(COALESCE(u.name, '')) LIKE LOWER(CONCAT('%', :q, '%'))
+                   OR LOWER(COALESCE(u.email, '')) LIKE LOWER(CONCAT('%', :q, '%')))
+            ORDER BY u.createdAt DESC
+            """)
+    Page<User> searchAdminParticipants(@Param("adminId") String adminId, @Param("q") String q,
+                                       @org.springframework.lang.Nullable UserRole role, Pageable pageable);
 }

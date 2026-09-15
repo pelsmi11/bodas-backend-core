@@ -15,151 +15,100 @@ import website.pelsmi11.bodasbackendcore.TestSecurityConfig;
 import website.pelsmi11.bodasbackendcore.domain.dto.admin.AdminDeviceDto;
 import website.pelsmi11.bodasbackendcore.domain.dto.admin.AdminUserDto;
 import website.pelsmi11.bodasbackendcore.domain.dto.admin.DeviceBlockRequest;
-import website.pelsmi11.bodasbackendcore.domain.dto.admin.UserRoleUpdateRequest;
 import website.pelsmi11.bodasbackendcore.domain.exception.CustomErrorException;
 import website.pelsmi11.bodasbackendcore.domain.service.admin.AdminUserService;
-import website.pelsmi11.bodasbackendcore.persistence.model.UserRole;
+import website.pelsmi11.bodasbackendcore.web.auth.JwtSubjectExtractor;
 import website.pelsmi11.bodasbackendcore.web.config.SecurityConfig;
 import website.pelsmi11.bodasbackendcore.web.exception.GlobalExceptionHandler;
 
-import java.time.OffsetDateTime;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(controllers = AdminUserController.class)
-@Import({GlobalExceptionHandler.class, SecurityConfig.class, TestSecurityConfig.class})
+@Import({GlobalExceptionHandler.class, SecurityConfig.class, TestSecurityConfig.class, JwtSubjectExtractor.class})
 class AdminUserControllerTest {
 
     private static final String AUTH_HEADER = "Authorization";
-    private static final String BEARER = "Bearer test-jwt";
+    private static final String ADMIN = "Bearer test-jwt";
+    private static final String GUEST = "Bearer test-guest";
 
     @Autowired
     private MockMvc mockMvc;
     @Autowired
     private ObjectMapper objectMapper;
 
-    @MockitoBean
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
     private AdminUserService adminUserService;
 
-    private AdminUserDto sampleUserDto() {
-        return new AdminUserDto(1, "cognito-1", "Test", "test@example.com",
-                UserRole.GUEST, OffsetDateTime.now(), null, 2, 10);
+    private AdminUserDto adminDto() {
+        return new AdminUserDto(1, "cognito-1", "Test User", "test@example.com",
+                website.pelsmi11.bodasbackendcore.persistence.model.UserRole.GUEST,
+                java.time.OffsetDateTime.now(), java.time.OffsetDateTime.now(), 1L, 2L);
     }
 
     @Test
-    void findAllUsers_returns200() throws Exception {
-        when(adminUserService.findAllUsers(any(), any(), any()))
-                .thenReturn(new PageImpl<>(List.of(sampleUserDto()), PageRequest.of(0, 20), 1));
+    void findAllUsers_admin_returns200Envelope() throws Exception {
+        org.mockito.Mockito.when(adminUserService.findAllUsers(
+                        eq(TestDataFactory.TEST_ADMIN_SUB), any(), any(), any()))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(adminDto())));
 
-        mockMvc.perform(get("/api/v1/admin/users")
-                        .header(AUTH_HEADER, BEARER))
+        mockMvc.perform(get("/api/v1/admin/users").header(AUTH_HEADER, ADMIN))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.content[0].id").value(1));
     }
 
     @Test
-    void findUserById_existing_returns200() throws Exception {
-        when(adminUserService.findUserById(1)).thenReturn(sampleUserDto());
-
-        mockMvc.perform(get("/api/v1/admin/users/1")
-                        .header(AUTH_HEADER, BEARER))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.id").value(1));
+    void findAllUsers_guest_returns403() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/users").header(AUTH_HEADER, GUEST))
+                .andExpect(status().isForbidden());
     }
 
     @Test
-    void findUserById_notFound_returns404() throws Exception {
-        when(adminUserService.findUserById(99)).thenThrow(
-                new CustomErrorException("User not found", org.springframework.http.HttpStatus.NOT_FOUND));
+    void findAllUsers_withoutJwt_returns401() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/users"))
+                .andExpect(status().isUnauthorized());
+    }
 
-        mockMvc.perform(get("/api/v1/admin/users/99")
-                        .header(AUTH_HEADER, BEARER))
+    @Test
+    void patchRole_isRetired_returns404or405() throws Exception {
+        // users.role is a bootstrap mirror; the endpoint must be gone
+        mockMvc.perform(patch("/api/v1/admin/users/{id}/role", 1)
+                        .header(AUTH_HEADER, ADMIN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"ADMIN\"}"))
                 .andExpect(status().isNotFound());
     }
 
     @Test
-    void findUserDevices_returns200() throws Exception {
-        AdminDeviceDto deviceDto = new AdminDeviceDto(
-                TestDataFactory.TEST_GUEST_UUID, 1, "cognito-1",
-                OffsetDateTime.now(), false, null, 5);
-        when(adminUserService.findDevicesByUser(eq(1), any()))
-                .thenReturn(new PageImpl<>(List.of(deviceDto), PageRequest.of(0, 20), 1));
-
-        mockMvc.perform(get("/api/v1/admin/users/1/devices")
-                        .header(AUTH_HEADER, BEARER))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.content[0].photoCount").value(5));
-    }
-
-    @Test
-    void setRole_validBody_returns200() throws Exception {
-        UserRoleUpdateRequest request = new UserRoleUpdateRequest();
-        request.setRole(UserRole.ADMIN);
-        AdminUserDto adminDto = sampleUserDto();
-        when(adminUserService.setRole(eq(1), any())).thenReturn(adminDto);
-
-        mockMvc.perform(patch("/api/v1/admin/users/1/role")
-                        .header(AUTH_HEADER, BEARER)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk());
-    }
-
-    @Test
-    void setRole_missingRole_returns400() throws Exception {
-        mockMvc.perform(patch("/api/v1/admin/users/1/role")
-                        .header(AUTH_HEADER, BEARER)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void blockDevices_validBody_returns200() throws Exception {
-        DeviceBlockRequest request = new DeviceBlockRequest();
-        request.setGuestUuids(List.of(TestDataFactory.TEST_GUEST_UUID));
-        request.setBlocked(true);
-        AdminDeviceDto blockedDto = new AdminDeviceDto(
-                TestDataFactory.TEST_GUEST_UUID, 1, "cognito-1",
-                OffsetDateTime.now(), true, OffsetDateTime.now(), 5);
-        when(adminUserService.blockDevices(any())).thenReturn(List.of(blockedDto));
+    void blockDevices_admin_scopesToOwnedEvents() throws Exception {
+        org.mockito.Mockito.when(adminUserService.blockDevices(eq(TestDataFactory.TEST_ADMIN_SUB), any()))
+                .thenReturn(List.of(new AdminDeviceDto(TestDataFactory.TEST_GUEST_UUID, 10, "cognito-10",
+                        java.time.OffsetDateTime.now(), true, java.time.OffsetDateTime.now(), 0L)));
 
         mockMvc.perform(post("/api/v1/admin/devices/block")
-                        .header(AUTH_HEADER, BEARER)
+                        .header(AUTH_HEADER, ADMIN)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
+                        .content("{\"guestUuids\":[\"" + TestDataFactory.TEST_GUEST_UUID + "\"]}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].blocked").value(true));
+                .andExpect(jsonPath("$.success").value(true));
     }
 
     @Test
-    void blockDevices_emptyUuids_returns400() throws Exception {
-        mockMvc.perform(post("/api/v1/admin/devices/block")
-                        .header(AUTH_HEADER, BEARER)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"guestUuids\":[]}"))
-                .andExpect(status().isBadRequest());
-    }
+    void errorResponse_usesRealApiErrorShape() throws Exception {
+        org.mockito.Mockito.when(adminUserService.findUserById(eq(TestDataFactory.TEST_ADMIN_SUB), eq(404)))
+                .thenThrow(CustomErrorException.handlerCustomError("User not found", org.springframework.http.HttpStatus.NOT_FOUND));
 
-    @Test
-    void unblockDevices_validBody_returns200() throws Exception {
-        DeviceBlockRequest request = new DeviceBlockRequest();
-        request.setGuestUuids(List.of(TestDataFactory.TEST_GUEST_UUID));
-        AdminDeviceDto unblocked = new AdminDeviceDto(
-                TestDataFactory.TEST_GUEST_UUID, 1, "cognito-1",
-                OffsetDateTime.now(), false, null, 5);
-        when(adminUserService.blockDevices(any())).thenReturn(List.of(unblocked));
-
-        mockMvc.perform(post("/api/v1/admin/devices/unblock")
-                        .header(AUTH_HEADER, BEARER)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].blocked").value(false));
+        mockMvc.perform(get("/api/v1/admin/users/{id}", 404).header(AUTH_HEADER, ADMIN))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("User not found"));
     }
 }

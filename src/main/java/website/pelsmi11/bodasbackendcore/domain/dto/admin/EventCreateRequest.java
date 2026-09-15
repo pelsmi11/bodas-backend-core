@@ -13,9 +13,6 @@ public class EventCreateRequest {
     @Size(max = 255)
     private String name;
 
-    @Size(max = 255)
-    private String adminId;
-
     private OffsetDateTime eventDate;
 
     @Size(max = 1000)

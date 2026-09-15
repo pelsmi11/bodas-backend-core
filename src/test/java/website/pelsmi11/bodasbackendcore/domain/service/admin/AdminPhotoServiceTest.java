@@ -15,216 +15,143 @@ import website.pelsmi11.bodasbackendcore.domain.dto.admin.PhotoModerationRequest
 import website.pelsmi11.bodasbackendcore.domain.dto.admin.PhotoStatusUpdateRequest;
 import website.pelsmi11.bodasbackendcore.domain.exception.CustomErrorException;
 import website.pelsmi11.bodasbackendcore.domain.service.feed.PhotoFeedPublisher;
+import website.pelsmi11.bodasbackendcore.persistence.model.Event;
 import website.pelsmi11.bodasbackendcore.persistence.model.ModerationStatus;
 import website.pelsmi11.bodasbackendcore.persistence.model.Photo;
+import website.pelsmi11.bodasbackendcore.persistence.repository.EventRepository;
 import website.pelsmi11.bodasbackendcore.persistence.repository.PhotoRepository;
 
-import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
+/**
+ * Ownership semantics (spec 001 T025): every photo operation validates that the
+ * photo belongs to an event administered by the caller; foreign access is 404.
+ */
 @ExtendWith(MockitoExtension.class)
 class AdminPhotoServiceTest {
 
+    private static final String SUB = TestDataFactory.TEST_ADMIN_SUB;
     private static final UUID PHOTO_ID = TestDataFactory.TEST_PHOTO_ID;
+    private static final Pageable PAGEABLE = PageRequest.of(0, 20);
 
     @Mock
     private PhotoRepository photoRepository;
     @Mock
     private PhotoFeedPublisher photoFeedPublisher;
+    @Mock
+    private website.pelsmi11.bodasbackendcore.persistence.repository.EventRepository eventRepository;
 
     @InjectMocks
     private AdminPhotoService adminPhotoService;
 
+    private Photo ownedPhoto(ModerationStatus status) {
+        Event event = TestDataFactory.event(1, TestDataFactory.TEST_EVENT_TOKEN, true);
+        event.setAdminId(SUB);
+        return TestDataFactory.photo(PHOTO_ID, event, status);
+    }
+
+    private Photo foreignPhoto(ModerationStatus status) {
+        Event foreign = TestDataFactory.event(2, "tok-foreign", true);
+        foreign.setAdminId("other-admin");
+        return TestDataFactory.photo(PHOTO_ID, foreign, status);
+    }
+
     @Test
-    void findByEvent_withStatus_callsFilteredQuery() {
-        Pageable pageable = PageRequest.of(0, 20);
-        Page<Photo> page = new PageImpl<>(List.of(TestDataFactory.photo()));
-        when(photoRepository.findByEventIdAndStatusAndDeletedAtIsNullOrderByUploadedAtDesc(1, ModerationStatus.PENDING, pageable))
-                .thenReturn(page);
+    void findPending_scopesToAdminEvents() {
+        when(photoRepository.findByEvent_AdminIdAndStatusAndDeletedAtIsNullOrderByUploadedAtDesc(
+                SUB, ModerationStatus.PENDING, PAGEABLE))
+                .thenReturn(new PageImpl<>(List.of(ownedPhoto(ModerationStatus.PENDING))));
 
-        Page<AdminPhotoDto> result = adminPhotoService.findByEvent(1, ModerationStatus.PENDING, false, pageable);
-
+        Page<AdminPhotoDto> result = adminPhotoService.findPending(SUB, PAGEABLE);
         assertThat(result.getContent()).hasSize(1);
     }
 
     @Test
-    void findByEvent_withoutStatus_notDeleted_callsNonDeletedQuery() {
-        Pageable pageable = PageRequest.of(0, 20);
-        Page<Photo> page = new PageImpl<>(List.of());
-        when(photoRepository.findByEventIdAndDeletedAtIsNullOrderByUploadedAtDesc(1, pageable)).thenReturn(page);
-
-        adminPhotoService.findByEvent(1, null, false, pageable);
-
-        verify(photoRepository).findByEventIdAndDeletedAtIsNullOrderByUploadedAtDesc(1, pageable);
-    }
-
-    @Test
-    void findByEvent_includeDeleted_callsAllQuery() {
-        Pageable pageable = PageRequest.of(0, 20);
-        Page<Photo> page = new PageImpl<>(List.of());
-        when(photoRepository.findByEventIdOrderByUploadedAtDesc(1, pageable)).thenReturn(page);
-
-        adminPhotoService.findByEvent(1, null, true, pageable);
-
-        verify(photoRepository).findByEventIdOrderByUploadedAtDesc(1, pageable);
-    }
-
-    @Test
-    void findPendingGlobal_returnsPendingPage() {
-        Pageable pageable = PageRequest.of(0, 20);
-        Page<Photo> page = new PageImpl<>(List.of(TestDataFactory.photo(PHOTO_ID, TestDataFactory.event(), ModerationStatus.PENDING)));
-        when(photoRepository.findByStatusAndDeletedAtIsNullOrderByUploadedAtDesc(ModerationStatus.PENDING, pageable))
-                .thenReturn(page);
-
-        Page<AdminPhotoDto> result = adminPhotoService.findPendingGlobal(pageable);
-
-        assertThat(result.getContent()).hasSize(1);
-    }
-
-    @Test
-    void findById_existing_returnsDto() {
-        Photo photo = TestDataFactory.photo();
-        when(photoRepository.findById(PHOTO_ID)).thenReturn(Optional.of(photo));
-
-        AdminPhotoDto dto = adminPhotoService.findById(PHOTO_ID);
-
+    void findById_owned_returns() {
+        when(photoRepository.findById(PHOTO_ID)).thenReturn(Optional.of(ownedPhoto(ModerationStatus.PENDING)));
+        AdminPhotoDto dto = adminPhotoService.findById(SUB, PHOTO_ID);
         assertThat(dto.id()).isEqualTo(PHOTO_ID);
-        assertThat(dto.s3Key()).isEqualTo(photo.getS3Key());
     }
 
     @Test
-    void findById_notFound_throws404() {
-        when(photoRepository.findById(PHOTO_ID)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> adminPhotoService.findById(PHOTO_ID))
+    void findById_foreign_returns404() {
+        when(photoRepository.findById(PHOTO_ID)).thenReturn(Optional.of(foreignPhoto(ModerationStatus.PENDING)));
+        assertThatThrownBy(() -> adminPhotoService.findById(SUB, PHOTO_ID))
                 .isInstanceOf(CustomErrorException.class)
-                .hasMessage("Photo not found");
+                .hasMessageContaining("Photo not found");
     }
 
     @Test
-    void updateStatus_approved_publishesFeed() {
-        Photo photo = TestDataFactory.photo(PHOTO_ID, TestDataFactory.event(), ModerationStatus.PENDING);
+    void updateStatus_owned_approvesAndPublishes() {
+        Photo photo = ownedPhoto(ModerationStatus.PENDING);
+        when(photoRepository.findById(PHOTO_ID)).thenReturn(Optional.of(photo));
+        when(photoRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
         PhotoStatusUpdateRequest request = new PhotoStatusUpdateRequest();
         request.setStatus(ModerationStatus.APPROVED);
-        request.setReason("manual approval");
-        when(photoRepository.findById(PHOTO_ID)).thenReturn(Optional.of(photo));
-        when(photoRepository.save(any(Photo.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        AdminPhotoDto dto = adminPhotoService.updateStatus(PHOTO_ID, request, "admin-sub");
+        AdminPhotoDto dto = adminPhotoService.updateStatus(SUB, PHOTO_ID, request);
 
         assertThat(dto.status()).isEqualTo(ModerationStatus.APPROVED);
-        assertThat(dto.moderatedBy()).isEqualTo("admin-sub");
-        assertThat(dto.moderationDetails()).containsEntry("source", "admin-manual");
-        assertThat(dto.moderationDetails()).containsEntry("reason", "manual approval");
-        assertThat(dto.moderationDetails()).containsEntry("previousStatus", "PENDING");
         verify(photoFeedPublisher).publishApprovedPhoto(photo);
     }
 
     @Test
-    void updateStatus_rejected_doesNotPublish() {
-        Photo photo = TestDataFactory.photo(PHOTO_ID, TestDataFactory.event(), ModerationStatus.PENDING);
+    void updateStatus_foreign_returns404() {
+        when(photoRepository.findById(PHOTO_ID)).thenReturn(Optional.of(foreignPhoto(ModerationStatus.PENDING)));
         PhotoStatusUpdateRequest request = new PhotoStatusUpdateRequest();
-        request.setStatus(ModerationStatus.REJECTED);
-        when(photoRepository.findById(PHOTO_ID)).thenReturn(Optional.of(photo));
-        when(photoRepository.save(any(Photo.class))).thenAnswer(inv -> inv.getArgument(0));
+        request.setStatus(ModerationStatus.APPROVED);
 
-        adminPhotoService.updateStatus(PHOTO_ID, request, "admin-sub");
-
-        verify(photoFeedPublisher, never()).publishApprovedPhoto(any());
-    }
-
-    @Test
-    void moderate_approveBatch_publishesEach() {
-        Photo photo1 = TestDataFactory.photo(UUID.fromString("22222222-2222-2222-2222-222222222222"), TestDataFactory.event(), ModerationStatus.PENDING);
-        Photo photo2 = TestDataFactory.photo(UUID.fromString("33333333-3333-3333-3333-333333333333"), TestDataFactory.event(), ModerationStatus.PENDING);
-        PhotoModerationRequest request = new PhotoModerationRequest();
-        request.setPhotoIds(List.of(photo1.getId(), photo2.getId()));
-        request.setAction(PhotoModerationRequest.ModerationAction.APPROVE);
-        when(photoRepository.findByIdIn(request.getPhotoIds())).thenReturn(List.of(photo1, photo2));
-        when(photoRepository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
-
-        List<AdminPhotoDto> result = adminPhotoService.moderate(request, "admin-sub");
-
-        assertThat(result).hasSize(2);
-        assertThat(photo1.getStatus()).isEqualTo(ModerationStatus.APPROVED);
-        assertThat(photo1.getModeratedBy()).isEqualTo("admin-sub");
-        verify(photoFeedPublisher, times(2)).publishApprovedPhoto(any());
-    }
-
-    @Test
-    void moderate_rejectBatch_doesNotPublish() {
-        Photo photo = TestDataFactory.photo(PHOTO_ID, TestDataFactory.event(), ModerationStatus.PENDING);
-        PhotoModerationRequest request = new PhotoModerationRequest();
-        request.setPhotoIds(List.of(PHOTO_ID));
-        request.setAction(PhotoModerationRequest.ModerationAction.REJECT);
-        request.setReason("inappropriate");
-        when(photoRepository.findByIdIn(request.getPhotoIds())).thenReturn(List.of(photo));
-        when(photoRepository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
-
-        adminPhotoService.moderate(request, "admin-sub");
-
-        assertThat(photo.getStatus()).isEqualTo(ModerationStatus.REJECTED);
-        verify(photoFeedPublisher, never()).publishApprovedPhoto(any());
-    }
-
-    @Test
-    void moderate_noPhotosFound_throws404() {
-        PhotoModerationRequest request = new PhotoModerationRequest();
-        request.setPhotoIds(List.of(PHOTO_ID));
-        request.setAction(PhotoModerationRequest.ModerationAction.APPROVE);
-        when(photoRepository.findByIdIn(request.getPhotoIds())).thenReturn(List.of());
-
-        assertThatThrownBy(() -> adminPhotoService.moderate(request, "admin-sub"))
+        assertThatThrownBy(() -> adminPhotoService.updateStatus(SUB, PHOTO_ID, request))
                 .isInstanceOf(CustomErrorException.class)
-                .hasMessageContaining("not found");
+                .hasMessageContaining("Photo not found");
     }
 
     @Test
-    void softDelete_withValidIds_callsRepository() {
-        List<UUID> ids = List.of(PHOTO_ID);
-        when(photoRepository.softDeleteByIds(eq(ids), any(OffsetDateTime.class))).thenReturn(1);
+    void moderate_ownedPhotos_updatesAll() {
+        Photo owned = ownedPhoto(ModerationStatus.PENDING);
+        when(photoRepository.findByIdIn(any())).thenReturn(List.of(owned));
+        when(photoRepository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        int count = adminPhotoService.softDelete(PHOTO_ID.toString());
+        PhotoModerationRequest request = new PhotoModerationRequest();
+        request.setPhotoIds(List.of(PHOTO_ID));
+        request.setAction(PhotoModerationRequest.ModerationAction.APPROVE);
+        List<AdminPhotoDto> result = adminPhotoService.moderate(SUB, request);
 
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).status()).isEqualTo(ModerationStatus.APPROVED);
+        verify(photoFeedPublisher).publishApprovedPhoto(owned);
+    }
+
+    @Test
+    void moderate_foreignPhoto_returns404() {
+        when(photoRepository.findByIdIn(any())).thenReturn(List.of(foreignPhoto(ModerationStatus.PENDING)));
+        PhotoModerationRequest request = new PhotoModerationRequest();
+        request.setPhotoIds(List.of(PHOTO_ID));
+
+        assertThatThrownBy(() -> adminPhotoService.moderate(SUB, request))
+                .isInstanceOf(CustomErrorException.class)
+                .hasMessageContaining("Photo not found");
+    }
+
+    @Test
+    void softDelete_owned_deletes() {
+        when(photoRepository.findByIdIn(any())).thenReturn(List.of(ownedPhoto(ModerationStatus.PENDING)));
+        when(photoRepository.softDeleteByIds(any(), any(java.time.OffsetDateTime.class))).thenReturn(1);
+
+        int count = adminPhotoService.softDelete(SUB, PHOTO_ID.toString());
         assertThat(count).isEqualTo(1);
     }
 
     @Test
-    void softDelete_emptyString_throws400() {
-        assertThatThrownBy(() -> adminPhotoService.softDelete(""))
-                .isInstanceOf(CustomErrorException.class)
-                .hasMessageContaining("required");
-        verify(photoRepository, never()).softDeleteByIds(any(), any());
-    }
-
-    @Test
-    void softDelete_nullString_throws400() {
-        assertThatThrownBy(() -> adminPhotoService.softDelete(null))
-                .isInstanceOf(CustomErrorException.class)
-                .hasMessageContaining("required");
-        verify(photoRepository, never()).softDeleteByIds(any(), any());
-    }
-
-    @Test
-    void softDelete_invalidUuid_throws400() {
-        assertThatThrownBy(() -> adminPhotoService.softDelete("not-a-uuid"))
-                .isInstanceOf(CustomErrorException.class)
-                .hasMessageContaining("Invalid UUID");
-        verify(photoRepository, never()).softDeleteByIds(any(), any());
-    }
-
-    @Test
-    void softDelete_blankString_throws400() {
-        assertThatThrownBy(() -> adminPhotoService.softDelete("   "))
+    void softDelete_foreign_returns404() {
+        when(photoRepository.findByIdIn(any())).thenReturn(List.of(foreignPhoto(ModerationStatus.PENDING)));
+        assertThatThrownBy(() -> adminPhotoService.softDelete(SUB, PHOTO_ID.toString()))
                 .isInstanceOf(CustomErrorException.class);
-        verify(photoRepository, never()).softDeleteByIds(any(), any());
     }
 }

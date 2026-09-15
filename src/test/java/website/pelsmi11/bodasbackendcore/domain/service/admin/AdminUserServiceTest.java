@@ -13,15 +13,16 @@ import website.pelsmi11.bodasbackendcore.TestDataFactory;
 import website.pelsmi11.bodasbackendcore.domain.dto.admin.AdminDeviceDto;
 import website.pelsmi11.bodasbackendcore.domain.dto.admin.AdminUserDto;
 import website.pelsmi11.bodasbackendcore.domain.dto.admin.DeviceBlockRequest;
-import website.pelsmi11.bodasbackendcore.domain.dto.admin.UserRoleUpdateRequest;
-import website.pelsmi11.bodasbackendcore.domain.exception.CustomErrorException;
+import website.pelsmi11.bodasbackendcore.persistence.model.Event;
+import website.pelsmi11.bodasbackendcore.persistence.model.EventParticipant;
 import website.pelsmi11.bodasbackendcore.persistence.model.User;
 import website.pelsmi11.bodasbackendcore.persistence.model.UserDevice;
 import website.pelsmi11.bodasbackendcore.persistence.model.UserRole;
-import website.pelsmi11.bodasbackendcore.persistence.repository.PhotoRepository;
+import website.pelsmi11.bodasbackendcore.persistence.repository.EventParticipantRepository;
 import website.pelsmi11.bodasbackendcore.persistence.repository.UserDeviceRepository;
 import website.pelsmi11.bodasbackendcore.persistence.repository.UserRepository;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -29,160 +30,135 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
+/**
+ * Ownership semantics (spec 001 T025): user/device admin queries are restricted
+ * to participants of events administered by the caller; setRole is RETIRED
+ * (users.role is a bootstrap mirror only).
+ */
 @ExtendWith(MockitoExtension.class)
 class AdminUserServiceTest {
+
+    private static final String SUB = TestDataFactory.TEST_ADMIN_SUB;
+    private static final Pageable PAGEABLE = PageRequest.of(0, 20);
 
     @Mock
     private UserRepository userRepository;
     @Mock
     private UserDeviceRepository userDeviceRepository;
     @Mock
-    private PhotoRepository photoRepository;
+    private EventParticipantRepository eventParticipantRepository;
 
     @InjectMocks
     private AdminUserService adminUserService;
 
-    @Test
-    void findAllUsers_noFilters_callsFindAll() {
-        Pageable pageable = PageRequest.of(0, 20);
-        Page<User> page = new PageImpl<>(List.of(TestDataFactory.user()));
-        when(userRepository.findAllByOrderByCreatedAtDesc(pageable)).thenReturn(page);
+    private List<EventParticipant> callerScope() {
+        return List.of(participant(1, 10, SUB));
+    }
 
-        Page<AdminUserDto> result = adminUserService.findAllUsers(null, null, pageable);
+    private EventParticipant participant(Integer eventId, Integer userId, String adminId) {
+        Event event = TestDataFactory.event(eventId, "tok" + eventId, true);
+        event.setAdminId(adminId);
+        User user = TestDataFactory.user(userId, "cognito-" + userId);
+        return new EventParticipant(event, user, OffsetDateTime.now(), OffsetDateTime.now());
+    }
+
+    @Test
+    void findAllUsers_scopesToAdminParticipants() {
+        User participant = TestDataFactory.user(10, "cognito-10");
+        when(userRepository.findAdminParticipants(SUB, null, PAGEABLE))
+                .thenReturn(new PageImpl<>(List.of(participant)));
+
+        Page<AdminUserDto> result = adminUserService.findAllUsers(SUB, null, null, PAGEABLE);
 
         assertThat(result.getContent()).hasSize(1);
     }
 
     @Test
-    void findAllUsers_withRole_callsRoleQuery() {
-        Pageable pageable = PageRequest.of(0, 20);
-        Page<User> page = new PageImpl<>(List.of());
-        when(userRepository.findByRoleOrderByCreatedAtDesc(UserRole.ADMIN, pageable)).thenReturn(page);
+    void findAllUsers_withSearch_usesSearchQuery() {
+        when(userRepository.searchAdminParticipants(SUB, "test", null, PAGEABLE))
+                .thenReturn(new PageImpl<>(List.of(TestDataFactory.user(10, "cognito-10"))));
 
-        adminUserService.findAllUsers(null, UserRole.ADMIN, pageable);
-
-        verify(userRepository).findByRoleOrderByCreatedAtDesc(UserRole.ADMIN, pageable);
-    }
-
-    @Test
-    void findAllUsers_withSearch_callsSearchQuery() {
-        Pageable pageable = PageRequest.of(0, 20);
-        Page<User> page = new PageImpl<>(List.of());
-        when(userRepository.findByNameContainingIgnoreCaseOrEmailContainingIgnoreCaseOrderByCreatedAtDesc("hector", "hector", pageable))
-                .thenReturn(page);
-
-        adminUserService.findAllUsers("hector", null, pageable);
-
-        verify(userRepository).findByNameContainingIgnoreCaseOrEmailContainingIgnoreCaseOrderByCreatedAtDesc("hector", "hector", pageable);
-    }
-
-    @Test
-    void findAllUsers_withRoleAndSearch_callsCombinedQuery() {
-        Pageable pageable = PageRequest.of(0, 20);
-        Page<User> page = new PageImpl<>(List.of());
-        when(userRepository.findByRoleAndSearch(UserRole.ADMIN, "hector", pageable)).thenReturn(page);
-
-        adminUserService.findAllUsers("hector", UserRole.ADMIN, pageable);
-
-        verify(userRepository).findByRoleAndSearch(UserRole.ADMIN, "hector", pageable);
-    }
-
-    @Test
-    void findUserById_existing_returnsDto() {
-        User user = TestDataFactory.user();
-        when(userRepository.findById(1)).thenReturn(Optional.of(user));
-
-        AdminUserDto dto = adminUserService.findUserById(1);
-
-        assertThat(dto.id()).isEqualTo(1);
-        assertThat(dto.cognitoId()).isEqualTo("cognito-user-1");
-    }
-
-    @Test
-    void findUserById_notFound_throws404() {
-        when(userRepository.findById(99)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> adminUserService.findUserById(99))
-                .isInstanceOf(CustomErrorException.class)
-                .hasMessage("User not found");
-    }
-
-    @Test
-    void findDevicesByUser_returnsDevicePage() {
-        User user = TestDataFactory.user();
-        UserDevice device = TestDataFactory.userDevice();
-        when(userRepository.findById(1)).thenReturn(Optional.of(user));
-        Pageable pageable = PageRequest.of(0, 20);
-        Page<UserDevice> page = new PageImpl<>(List.of(device));
-        when(userDeviceRepository.findByUserIdOrderByLastActiveDesc(1, pageable)).thenReturn(page);
-
-        Page<AdminDeviceDto> result = adminUserService.findDevicesByUser(1, pageable);
-
+        Page<AdminUserDto> result = adminUserService.findAllUsers(SUB, "test", null, PAGEABLE);
         assertThat(result.getContent()).hasSize(1);
-        assertThat(result.getContent().get(0).guestUuid()).isEqualTo(device.getGuestUuid());
     }
 
     @Test
-    void findDevicesByUser_userNotFound_throws404() {
-        when(userRepository.findById(99)).thenReturn(Optional.empty());
+    void findUserById_participantOfAdminEvent_returns200() {
+        User user = TestDataFactory.user(10, "cognito-10");
+        when(userRepository.findById(10)).thenReturn(java.util.Optional.of(user));
+        when(eventParticipantRepository.findByUserId(10)).thenReturn(callerScope());
 
-        assertThatThrownBy(() -> adminUserService.findDevicesByUser(99, PageRequest.of(0, 20)))
-                .isInstanceOf(CustomErrorException.class);
+        AdminUserDto dto = adminUserService.findUserById(SUB, 10);
+        assertThat(dto.id()).isEqualTo(10);
     }
 
     @Test
-    void blockDevices_blockedTrue_updatesAndReturnsList() {
-        UUID uuid1 = TestDataFactory.TEST_GUEST_UUID;
+    void findUserById_nonParticipant_returns404() {
+        User user = TestDataFactory.user(99, "cognito-99");
+        when(userRepository.findById(99)).thenReturn(java.util.Optional.of(user));
+        when(eventParticipantRepository.findByUserId(99)).thenReturn(List.of());
+
+        assertThatThrownBy(() -> adminUserService.findUserById(SUB, 99))
+                .isInstanceOf(website.pelsmi11.bodasbackendcore.domain.exception.CustomErrorException.class)
+                .hasMessageContaining("User not found");
+    }
+
+    @Test
+    void findDevicesByUser_participant_returnsDevices() {
+        User user = TestDataFactory.user(10, "cognito-10");
+        when(userRepository.findById(10)).thenReturn(java.util.Optional.of(user));
+        when(eventParticipantRepository.findByUserId(10)).thenReturn(callerScope());
+        when(userDeviceRepository.findByUserIdOrderByLastActiveDesc(10, PAGEABLE))
+                .thenReturn(new PageImpl<>(List.of(TestDataFactory.userDevice())));
+
+        Page<AdminDeviceDto> result = adminUserService.findDevicesByUser(SUB, 10, PAGEABLE);
+        assertThat(result.getContent()).hasSize(1);
+    }
+
+    @Test
+    void findDevicesByUser_nonParticipant_returns404() {
+        when(userRepository.findById(77)).thenReturn(java.util.Optional.of(TestDataFactory.user(77, "cognito-77")));
+        when(eventParticipantRepository.findByUserId(77)).thenReturn(List.of());
+
+        assertThatThrownBy(() -> adminUserService.findDevicesByUser(SUB, 77, PAGEABLE))
+                .isInstanceOf(website.pelsmi11.bodasbackendcore.domain.exception.CustomErrorException.class);
+    }
+
+    @Test
+    void blockDevices_filtersDevicesOutsideAdminScope() {
+        User inScopeUser = TestDataFactory.user(10, "cognito-10");
+        User outScopeUser = TestDataFactory.user(99, "cognito-99");
+        UserDevice inScope = TestDataFactory.userDevice(UUID.fromString("11111111-1111-1111-1111-111111111111"), inScopeUser, false);
+        UserDevice outScope = TestDataFactory.userDevice(UUID.fromString("22222222-2222-2222-2222-222222222222"), outScopeUser, false);
+        when(userDeviceRepository.findByGuestUuidIn(any()))
+                .thenReturn(List.of(inScope, outScope));
+        when(eventParticipantRepository.findByUserId(10))
+                .thenReturn(callerScope());
+        when(eventParticipantRepository.findByUserId(99))
+                .thenReturn(java.util.List.of());
+        when(userDeviceRepository.findByGuestUuidIn(java.util.List.of(
+                java.util.UUID.fromString("11111111-1111-1111-1111-111111111111"))))
+                .thenReturn(java.util.List.of(inScope));
         DeviceBlockRequest request = new DeviceBlockRequest();
-        request.setGuestUuids(List.of(uuid1));
-        request.setBlocked(true);
-        UserDevice device = TestDataFactory.userDevice(uuid1, TestDataFactory.user(), true);
-        when(userDeviceRepository.updateBlocked(eq(List.of(uuid1)), eq(true), any())).thenReturn(1);
-        when(userDeviceRepository.findByGuestUuidIn(List.of(uuid1))).thenReturn(List.of(device));
+        request.setGuestUuids(java.util.List.of(
+                UUID.fromString("11111111-1111-1111-1111-111111111111"),
+                UUID.fromString("22222222-2222-2222-2222-222222222222")));
 
-        List<AdminDeviceDto> result = adminUserService.blockDevices(request);
+        List<AdminDeviceDto> result = adminUserService.blockDevices(SUB, request);
 
+        // only the in-scope device was blocked; foreign devices filtered out
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).blocked()).isTrue();
-        verify(userDeviceRepository).updateBlocked(eq(List.of(uuid1)), eq(true), any());
     }
 
     @Test
-    void blockDevices_blockedNull_defaultsToTrue() {
-        UUID uuid = TestDataFactory.TEST_GUEST_UUID;
+    void blockDevices_emptyScope_returnsEmpty() {
+        when(userDeviceRepository.findByGuestUuidIn(any())).thenReturn(List.of());
         DeviceBlockRequest request = new DeviceBlockRequest();
-        request.setGuestUuids(List.of(uuid));
-        request.setBlocked(null);
-        when(userDeviceRepository.updateBlocked(eq(List.of(uuid)), eq(true), any())).thenReturn(1);
-        when(userDeviceRepository.findByGuestUuidIn(List.of(uuid))).thenReturn(List.of());
+        request.setGuestUuids(java.util.List.of(UUID.fromString("33333333-3333-3333-3333-333333333333")));
 
-        adminUserService.blockDevices(request);
-
-        verify(userDeviceRepository).updateBlocked(eq(List.of(uuid)), eq(true), any());
-    }
-
-    @Test
-    void setRole_updatesAndReturnsDto() {
-        User user = TestDataFactory.user();
-        when(userRepository.findById(1)).thenReturn(Optional.of(user));
-        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        UserRoleUpdateRequest request = new UserRoleUpdateRequest();
-        request.setRole(UserRole.ADMIN);
-        AdminUserDto dto = adminUserService.setRole(1, request);
-
-        assertThat(dto.role()).isEqualTo(UserRole.ADMIN);
-        assertThat(user.getRole()).isEqualTo(UserRole.ADMIN);
-    }
-
-    @Test
-    void setRole_userNotFound_throws404() {
-        when(userRepository.findById(99)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> adminUserService.setRole(99, new UserRoleUpdateRequest()))
-                .isInstanceOf(CustomErrorException.class);
+        List<AdminDeviceDto> result = adminUserService.blockDevices(SUB, request);
+        assertThat(result).isEmpty();
     }
 }

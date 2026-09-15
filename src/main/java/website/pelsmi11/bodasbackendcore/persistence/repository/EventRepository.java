@@ -23,4 +23,12 @@ public interface EventRepository extends JpaRepository<Event, Integer> {
     Page<Event> findByNameContainingIgnoreCaseOrderByCreatedAtDesc(String search, Pageable pageable);
 
     Page<Event> findByNameContainingIgnoreCaseAndStatusOrderByCreatedAtDesc(String search, EventStatus status, Pageable pageable);
+
+    // ---- Ownership-scoped queries (admin caller = events.admin_id) ----------
+
+    Page<Event> findByAdminIdAndNameContainingIgnoreCaseOrderByCreatedAtDesc(String adminId, String search, Pageable pageable);
+
+    Page<Event> findByAdminIdAndStatusOrderByCreatedAtDesc(String adminId, EventStatus status, Pageable pageable);
+
+    Page<Event> findByAdminIdAndNameContainingIgnoreCaseAndStatusOrderByCreatedAtDesc(String adminId, String search, EventStatus status, Pageable pageable);
 }

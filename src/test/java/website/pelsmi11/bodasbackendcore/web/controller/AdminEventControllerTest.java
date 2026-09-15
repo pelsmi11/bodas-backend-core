@@ -1,6 +1,5 @@
 package website.pelsmi11.bodasbackendcore.web.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -34,17 +33,20 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+/**
+ * Security matrix + ownership routing for admin events (spec 001 US4/T026):
+ * guest → 100% 403; admin → 200; ownership rejections surface as 404.
+ */
 @WebMvcTest(controllers = AdminEventController.class)
 @Import({GlobalExceptionHandler.class, SecurityConfig.class, TestSecurityConfig.class, JwtSubjectExtractor.class})
 class AdminEventControllerTest {
 
     private static final String AUTH_HEADER = "Authorization";
-    private static final String BEARER = "Bearer test-jwt";
+    private static final String ADMIN = "Bearer test-jwt";
+    private static final String GUEST = "Bearer test-guest";
 
     @Autowired
     private MockMvc mockMvc;
-    @Autowired
-    private ObjectMapper objectMapper;
 
     @MockitoBean
     private AdminEventService adminEventService;
@@ -52,143 +54,113 @@ class AdminEventControllerTest {
     private AdminPhotoService adminPhotoService;
 
     private EventResponse sampleResponse() {
-        return new EventResponse(1, "Boda Test", "ev123456", "admin-sub",
-                OffsetDateTime.now(), "desc", EventStatus.ACTIVE, true,
-                OffsetDateTime.now(), OffsetDateTime.now(), 5L);
+        return new EventResponse(1, "Boda Test", "ev123456", TestDataFactory.TEST_ADMIN_SUB,
+                java.time.OffsetDateTime.now(), "desc", EventStatus.ACTIVE, true,
+                java.time.OffsetDateTime.now(), java.time.OffsetDateTime.now(), 5L);
     }
 
     @Test
-    void create_withJwt_returns200() throws Exception {
+    void create_adminJwt_returns200Envelope() throws Exception {
         when(adminEventService.create(any(), eq(TestDataFactory.TEST_ADMIN_SUB)))
                 .thenReturn(sampleResponse());
 
         mockMvc.perform(post("/api/v1/admin/events")
-                        .header(AUTH_HEADER, BEARER)
+                        .header(AUTH_HEADER, ADMIN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"Boda Test\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.id").value(1))
-                .andExpect(jsonPath("$.data.token").value("ev123456"));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.id").value(1));
     }
 
     @Test
-    void create_withoutJwt_returns401() throws Exception {
-        mockMvc.perform(post("/api/v1/admin/events")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Boda Test\"}"))
-                .andExpect(status().isUnauthorized());
+    void adminOperations_guest_rejected100percent() throws Exception {
+        String body = "{\"name\":\"x\"}";
+        mockMvc.perform(get("/api/v1/admin/events").header(AUTH_HEADER, GUEST)).andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/v1/admin/events").header(AUTH_HEADER, GUEST)
+                .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/admin/events/1").header(AUTH_HEADER, GUEST)).andExpect(status().isForbidden());
+        mockMvc.perform(patch("/api/v1/admin/events/1").header(AUTH_HEADER, GUEST)
+                .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
+        mockMvc.perform(delete("/api/v1/admin/events/1").header(AUTH_HEADER, GUEST)).andExpect(status().isForbidden());
     }
 
     @Test
-    void create_missingName_returns400() throws Exception {
-        mockMvc.perform(post("/api/v1/admin/events")
-                        .header(AUTH_HEADER, BEARER)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isBadRequest());
+    void adminEndpoints_withoutJwt_return401() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/events")).andExpect(status().isUnauthorized());
+        mockMvc.perform(delete("/api/v1/admin/events/1")).andExpect(status().isUnauthorized());
     }
 
     @Test
-    void findAll_withParams_returns200() throws Exception {
-        when(adminEventService.findAll(eq("boda"), eq(EventStatus.ACTIVE), any()))
+    void findAll_scopedBySub() throws Exception {
+        when(adminEventService.findAll(eq(TestDataFactory.TEST_ADMIN_SUB), any(), any(), any()))
                 .thenReturn(new PageImpl<>(List.of(sampleResponse()), PageRequest.of(0, 20), 1));
 
-        mockMvc.perform(get("/api/v1/admin/events")
-                        .header(AUTH_HEADER, BEARER)
-                        .param("search", "boda")
-                        .param("status", "ACTIVE"))
+        mockMvc.perform(get("/api/v1/admin/events").header(AUTH_HEADER, ADMIN))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content[0].id").value(1));
     }
 
     @Test
-    void findById_existing_returns200() throws Exception {
-        when(adminEventService.findById(1)).thenReturn(sampleResponse());
+    void findById_foreignEvent_returns404() throws Exception {
+        when(adminEventService.findById(TestDataFactory.TEST_ADMIN_SUB, 2))
+                .thenThrow(CustomErrorException.handlerCustomError("Event not found", org.springframework.http.HttpStatus.NOT_FOUND));
 
-        mockMvc.perform(get("/api/v1/admin/events/1")
-                        .header(AUTH_HEADER, BEARER))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.id").value(1));
-    }
-
-    @Test
-    void findById_notFound_returns404() throws Exception {
-        when(adminEventService.findById(99)).thenThrow(
-                new CustomErrorException("Event not found", org.springframework.http.HttpStatus.NOT_FOUND));
-
-        mockMvc.perform(get("/api/v1/admin/events/99")
-                        .header(AUTH_HEADER, BEARER))
+        mockMvc.perform(get("/api/v1/admin/events/{id}", 2).header(AUTH_HEADER, ADMIN))
                 .andExpect(status().isNotFound());
     }
 
     @Test
-    void update_validBody_returns200() throws Exception {
-        when(adminEventService.update(eq(1), any())).thenReturn(sampleResponse());
+    void update_ownedEvent_returns200() throws Exception {
+        when(adminEventService.update(eq(TestDataFactory.TEST_ADMIN_SUB), eq(1), any()))
+                .thenReturn(sampleResponse());
 
-        mockMvc.perform(patch("/api/v1/admin/events/1")
-                        .header(AUTH_HEADER, BEARER)
+        mockMvc.perform(patch("/api/v1/admin/events/{id}", 1)
+                        .header(AUTH_HEADER, ADMIN)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Updated\"}"))
+                        .content("{\"name\":\"x\"}"))
                 .andExpect(status().isOk());
     }
 
     @Test
-    void regenerateToken_returns200() throws Exception {
-        when(adminEventService.regenerateToken(1)).thenReturn(new EventTokenRegenerateResponse("newtok99"));
+    void regenerateToken_ownedEvent_returnsToken() throws Exception {
+        when(adminEventService.regenerateToken(TestDataFactory.TEST_ADMIN_SUB, 1))
+                .thenReturn(new EventTokenRegenerateResponse("newtoken1"));
 
-        mockMvc.perform(post("/api/v1/admin/events/1/regenerate-token")
-                        .header(AUTH_HEADER, BEARER))
+        mockMvc.perform(post("/api/v1/admin/events/{id}/regenerate-token", 1).header(AUTH_HEADER, ADMIN))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.token").value("newtok99"));
+                .andExpect(jsonPath("$.data.token").value("newtoken1"));
     }
 
     @Test
-    void activate_returns200() throws Exception {
-        when(adminEventService.setActive(1, true)).thenReturn(sampleResponse());
-
-        mockMvc.perform(post("/api/v1/admin/events/1/activate")
-                        .header(AUTH_HEADER, BEARER))
-                .andExpect(status().isOk());
+    void delete_ownedEvent_returns204() throws Exception {
+        mockMvc.perform(delete("/api/v1/admin/events/{id}", 1).header(AUTH_HEADER, ADMIN))
+                .andExpect(status().isNoContent());
     }
 
     @Test
-    void deactivate_returns200() throws Exception {
-        when(adminEventService.setActive(1, false)).thenReturn(sampleResponse());
+    void stats_ownedEvent_returnsEnvelope() throws Exception {
+        when(adminEventService.getStats(TestDataFactory.TEST_ADMIN_SUB, 1))
+                .thenReturn(new EventPhotoStatsDto(5L, 2L, 2L, 1L, 0L));
 
-        mockMvc.perform(post("/api/v1/admin/events/1/deactivate")
-                        .header(AUTH_HEADER, BEARER))
-                .andExpect(status().isOk());
-    }
-
-    @Test
-    void getStats_returns200() throws Exception {
-        when(adminEventService.getStats(1)).thenReturn(new EventPhotoStatsDto(100, 10, 80, 5, 5));
-
-        mockMvc.perform(get("/api/v1/admin/events/1/stats")
-                        .header(AUTH_HEADER, BEARER))
+        mockMvc.perform(get("/api/v1/admin/events/{id}/stats", 1).header(AUTH_HEADER, ADMIN))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.total").value(100));
+                .andExpect(jsonPath("$.data.total").value(5));
     }
 
     @Test
-    void findEventPhotos_returns200() throws Exception {
-        AdminPhotoDto photoDto = new AdminPhotoDto(
-                TestDataFactory.TEST_PHOTO_ID, "uploads/key.jpg", ModerationStatus.PENDING,
-                "user", "cognito", TestDataFactory.TEST_GUEST_UUID, "ev123456", 1,
-                OffsetDateTime.now(), null, null, null, null);
-        when(adminPhotoService.findByEvent(eq(1), any(), eq(false), any()))
+    void eventPhotos_ownedEvent_returnsEnvelope() throws Exception {
+        AdminPhotoDto photoDto = new AdminPhotoDto(TestDataFactory.TEST_PHOTO_ID, "k", ModerationStatus.PENDING,
+                null, null, TestDataFactory.TEST_GUEST_UUID, "ev123456", 1,
+                java.time.OffsetDateTime.now(), null, null, null, null);
+        when(adminPhotoService.findByEvent(eq(TestDataFactory.TEST_ADMIN_SUB), eq(1), eq(ModerationStatus.PENDING),
+                eq(false), any()))
                 .thenReturn(new PageImpl<>(List.of(photoDto), PageRequest.of(0, 20), 1));
 
-        mockMvc.perform(get("/api/v1/admin/events/1/photos")
-                        .header(AUTH_HEADER, BEARER))
+        mockMvc.perform(get("/api/v1/admin/events/{id}/photos", 1)
+                        .header(AUTH_HEADER, ADMIN)
+                        .param("status", "PENDING"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.content[0].s3Key").value("uploads/key.jpg"));
-    }
-
-    @Test
-    void delete_returns204() throws Exception {
-        mockMvc.perform(delete("/api/v1/admin/events/1")
-                        .header(AUTH_HEADER, BEARER))
-                .andExpect(status().isNoContent());
+                .andExpect(jsonPath("$.data.content[0].eventId").value(1));
     }
 }

@@ -29,17 +29,33 @@ public class AdminPhotoService {
 
     private final PhotoRepository photoRepository;
     private final PhotoFeedPublisher photoFeedPublisher;
+    private final website.pelsmi11.bodasbackendcore.persistence.repository.EventRepository eventRepository;
 
     public AdminPhotoService(
             PhotoRepository photoRepository,
-            PhotoFeedPublisher photoFeedPublisher
+            PhotoFeedPublisher photoFeedPublisher,
+            website.pelsmi11.bodasbackendcore.persistence.repository.EventRepository eventRepository
     ) {
         this.photoRepository = photoRepository;
         this.photoFeedPublisher = photoFeedPublisher;
+        this.eventRepository = eventRepository;
+    }
+
+    /** Ownership scope: the photo's event must be administered by the caller. */
+    private Photo requireOwnedPhoto(String adminSub, UUID photoId) {
+        Photo photo = photoRepository.findById(photoId)
+                .orElseThrow(() -> CustomErrorException.handlerCustomError("Photo not found", HttpStatus.NOT_FOUND));
+        String owner = photo.getEvent() != null ? photo.getEvent().getAdminId() : null;
+        if (owner == null || !owner.equals(adminSub)) {
+            // Foreign photo access must be indistinguishable from a missing photo.
+            throw CustomErrorException.handlerCustomError("Photo not found", HttpStatus.NOT_FOUND);
+        }
+        return photo;
     }
 
     @Transactional(readOnly = true)
-    public Page<AdminPhotoDto> findByEvent(Integer eventId, ModerationStatus status, boolean includeDeleted, Pageable pageable) {
+    public Page<AdminPhotoDto> findByEvent(String adminSub, Integer eventId, ModerationStatus status, boolean includeDeleted, Pageable pageable) {
+        requireOwnedEvent(adminSub, eventId);
         Page<Photo> page;
         if (status != null) {
             page = photoRepository.findByEventIdAndStatusAndDeletedAtIsNullOrderByUploadedAtDesc(eventId, status, pageable);
@@ -51,20 +67,22 @@ public class AdminPhotoService {
         return page.map(this::toDto);
     }
 
+    /** Scoped to events administered by the caller (replaces global queue — no superadmin). */
     @Transactional(readOnly = true)
-    public Page<AdminPhotoDto> findPendingGlobal(Pageable pageable) {
-        return photoRepository.findByStatusAndDeletedAtIsNullOrderByUploadedAtDesc(ModerationStatus.PENDING, pageable)
+    public Page<AdminPhotoDto> findPending(String adminSub, Pageable pageable) {
+        return photoRepository.findByEvent_AdminIdAndStatusAndDeletedAtIsNullOrderByUploadedAtDesc(
+                        adminSub, ModerationStatus.PENDING, pageable)
                 .map(this::toDto);
     }
 
     @Transactional(readOnly = true)
-    public AdminPhotoDto findById(UUID id) {
-        return toDto(requirePhoto(id));
+    public AdminPhotoDto findById(String adminSub, UUID id) {
+        return toDto(requireOwnedPhoto(adminSub, id));
     }
 
     @Transactional
-    public AdminPhotoDto updateStatus(UUID photoId, PhotoStatusUpdateRequest request, String adminSub) {
-        Photo photo = requirePhoto(photoId);
+    public AdminPhotoDto updateStatus(String adminSub, UUID photoId, PhotoStatusUpdateRequest request) {
+        Photo photo = requireOwnedPhoto(adminSub, photoId);
         ModerationStatus previous = photo.getStatus();
         ModerationStatus next = request.getStatus();
         photo.setStatus(next);
@@ -79,10 +97,13 @@ public class AdminPhotoService {
     }
 
     @Transactional
-    public List<AdminPhotoDto> moderate(PhotoModerationRequest request, String adminSub) {
+    public List<AdminPhotoDto> moderate(String adminSub, PhotoModerationRequest request) {
         List<Photo> photos = photoRepository.findByIdIn(request.getPhotoIds());
         if (photos.isEmpty()) {
             throw CustomErrorException.handlerCustomError("Requested photos not found", HttpStatus.NOT_FOUND);
+        }
+        if (!allOwned(adminSub, photos)) {
+            throw CustomErrorException.handlerCustomError("Photo not found", HttpStatus.NOT_FOUND);
         }
         ModerationStatus target = request.getAction() == PhotoModerationRequest.ModerationAction.APPROVE
                 ? ModerationStatus.APPROVED
@@ -103,7 +124,7 @@ public class AdminPhotoService {
     }
 
     @Transactional
-    public int softDelete(String ids) {
+    public int softDelete(String adminSub, String ids) {
         if (ids == null || ids.isBlank()) {
             throw CustomErrorException.handlerCustomError("Parameter 'ids' is required", HttpStatus.BAD_REQUEST);
         }
@@ -111,7 +132,28 @@ public class AdminPhotoService {
         if (photoIds.isEmpty()) {
             return 0;
         }
+        List<Photo> photos = photoRepository.findByIdIn(photoIds);
+        if (photos.size() != photoIds.size()) {
+            throw CustomErrorException.handlerCustomError("Photo not found", HttpStatus.NOT_FOUND);
+        }
+        if (!allOwned(adminSub, photos)) {
+            throw CustomErrorException.handlerCustomError("Photo not found", HttpStatus.NOT_FOUND);
+        }
         return photoRepository.softDeleteByIds(photoIds, OffsetDateTime.now());
+    }
+
+    private boolean allOwned(String adminSub, List<Photo> photos) {
+        return photos.stream()
+                .allMatch(photo -> photo.getEvent() != null && adminSub.equals(photo.getEvent().getAdminId()));
+    }
+
+    /** Foreign event must be indistinguishable from a missing event (404). */
+    private void requireOwnedEvent(String adminSub, Integer eventId) {
+        website.pelsmi11.bodasbackendcore.persistence.model.Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> CustomErrorException.handlerCustomError("Event not found", HttpStatus.NOT_FOUND));
+        if (adminSub == null || !adminSub.equals(event.getAdminId())) {
+            throw CustomErrorException.handlerCustomError("Event not found", HttpStatus.NOT_FOUND);
+        }
     }
 
     private List<UUID> parseIds(String ids) {
@@ -124,11 +166,6 @@ public class AdminPhotoService {
         } catch (IllegalArgumentException ex) {
             throw CustomErrorException.handlerCustomError("Invalid UUID format in 'ids'", HttpStatus.BAD_REQUEST);
         }
-    }
-
-    private Photo requirePhoto(UUID id) {
-        return photoRepository.findById(id)
-                .orElseThrow(() -> CustomErrorException.handlerCustomError("Photo not found", HttpStatus.NOT_FOUND));
     }
 
     private Map<String, Object> buildDetails(String reason, String source, ModerationStatus previous) {

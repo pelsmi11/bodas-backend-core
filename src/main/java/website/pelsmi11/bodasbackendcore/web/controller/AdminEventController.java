@@ -61,59 +61,62 @@ public class AdminEventController {
 
     @GetMapping
     public ApiResponse<Page<EventResponse>> findAll(
+            @AuthenticationPrincipal Jwt jwt,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) EventStatus status,
             @PageableDefault(size = 20, sort = "createdAt,desc") Pageable pageable
     ) {
-        return ApiResponse.ok(adminEventService.findAll(search, status, pageable));
+        return ApiResponse.ok(adminEventService.findAll(jwtSubjectExtractor.requireSub(jwt), search, status, pageable));
     }
 
     @GetMapping("/{id}")
-    public ApiResponse<EventResponse> findById(@PathVariable Integer id) {
-        return ApiResponse.ok(adminEventService.findById(id));
+    public ApiResponse<EventResponse> findById(@AuthenticationPrincipal Jwt jwt, @PathVariable Integer id) {
+        return ApiResponse.ok(adminEventService.findById(jwtSubjectExtractor.requireSub(jwt), id));
     }
 
     @PatchMapping("/{id}")
     public ApiResponse<EventResponse> update(
+            @AuthenticationPrincipal Jwt jwt,
             @PathVariable Integer id,
             @Valid @RequestBody EventUpdateRequest request
     ) {
-        return ApiResponse.ok(adminEventService.update(id, request));
+        return ApiResponse.ok(adminEventService.update(jwtSubjectExtractor.requireSub(jwt), id, request));
     }
 
     @PostMapping("/{id}/regenerate-token")
-    public ApiResponse<EventTokenRegenerateResponse> regenerateToken(@PathVariable Integer id) {
-        return ApiResponse.ok(adminEventService.regenerateToken(id));
+    public ApiResponse<EventTokenRegenerateResponse> regenerateToken(@AuthenticationPrincipal Jwt jwt, @PathVariable Integer id) {
+        return ApiResponse.ok(adminEventService.regenerateToken(jwtSubjectExtractor.requireSub(jwt), id));
     }
 
     @PostMapping("/{id}/activate")
-    public ApiResponse<EventResponse> activate(@PathVariable Integer id) {
-        return ApiResponse.ok(adminEventService.setActive(id, true));
+    public ApiResponse<EventResponse> activate(@AuthenticationPrincipal Jwt jwt, @PathVariable Integer id) {
+        return ApiResponse.ok(adminEventService.setActive(jwtSubjectExtractor.requireSub(jwt), id, true));
     }
 
     @PostMapping("/{id}/deactivate")
-    public ApiResponse<EventResponse> deactivate(@PathVariable Integer id) {
-        return ApiResponse.ok(adminEventService.setActive(id, false));
+    public ApiResponse<EventResponse> deactivate(@AuthenticationPrincipal Jwt jwt, @PathVariable Integer id) {
+        return ApiResponse.ok(adminEventService.setActive(jwtSubjectExtractor.requireSub(jwt), id, false));
     }
 
     @GetMapping("/{id}/stats")
-    public ApiResponse<EventPhotoStatsDto> getStats(@PathVariable Integer id) {
-        return ApiResponse.ok(adminEventService.getStats(id));
+    public ApiResponse<EventPhotoStatsDto> getStats(@AuthenticationPrincipal Jwt jwt, @PathVariable Integer id) {
+        return ApiResponse.ok(adminEventService.getStats(jwtSubjectExtractor.requireSub(jwt), id));
     }
 
     @GetMapping("/{id}/photos")
     public ApiResponse<Page<AdminPhotoDto>> findEventPhotos(
+            @AuthenticationPrincipal Jwt jwt,
             @PathVariable Integer id,
             @RequestParam(required = false) ModerationStatus status,
             @RequestParam(defaultValue = "false") boolean includeDeleted,
             @PageableDefault(size = 20, sort = "uploadedAt,desc") Pageable pageable
     ) {
-        return ApiResponse.ok(adminPhotoService.findByEvent(id, status, includeDeleted, pageable));
+        return ApiResponse.ok(adminPhotoService.findByEvent(jwtSubjectExtractor.requireSub(jwt), id, status, includeDeleted, pageable));
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable Integer id) {
-        adminEventService.delete(id);
+    public void delete(@AuthenticationPrincipal Jwt jwt, @PathVariable Integer id) {
+        adminEventService.delete(jwtSubjectExtractor.requireSub(jwt), id);
     }
 }

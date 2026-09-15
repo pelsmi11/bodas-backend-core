@@ -40,37 +40,39 @@ public class AdminPhotoController {
         this.jwtSubjectExtractor = jwtSubjectExtractor;
     }
 
+    /** Scoped to events administered by the caller (no global pending queue). */
     @GetMapping("/pending")
     public ApiResponse<Page<AdminPhotoDto>> findPending(
+            @AuthenticationPrincipal Jwt jwt,
             @PageableDefault(size = 20, sort = "uploadedAt,desc") Pageable pageable
     ) {
-        return ApiResponse.ok(adminPhotoService.findPendingGlobal(pageable));
+        return ApiResponse.ok(adminPhotoService.findPending(jwtSubjectExtractor.requireSub(jwt), pageable));
     }
 
     @GetMapping("/{id}")
-    public ApiResponse<AdminPhotoDto> findById(@PathVariable java.util.UUID id) {
-        return ApiResponse.ok(adminPhotoService.findById(id));
+    public ApiResponse<AdminPhotoDto> findById(@AuthenticationPrincipal Jwt jwt, @PathVariable java.util.UUID id) {
+        return ApiResponse.ok(adminPhotoService.findById(jwtSubjectExtractor.requireSub(jwt), id));
     }
 
     @PatchMapping("/{id}/status")
     public ApiResponse<AdminPhotoDto> updateStatus(
+            @AuthenticationPrincipal Jwt jwt,
             @PathVariable java.util.UUID id,
-            @Valid @RequestBody PhotoStatusUpdateRequest request,
-            @AuthenticationPrincipal Jwt jwt
+            @Valid @RequestBody PhotoStatusUpdateRequest request
     ) {
-        return ApiResponse.ok(adminPhotoService.updateStatus(id, request, jwtSubjectExtractor.requireSub(jwt)));
+        return ApiResponse.ok(adminPhotoService.updateStatus(jwtSubjectExtractor.requireSub(jwt), id, request));
     }
 
     @PostMapping("/moderate")
     public ApiResponse<List<AdminPhotoDto>> moderate(
-            @Valid @RequestBody PhotoModerationRequest request,
-            @AuthenticationPrincipal Jwt jwt
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody PhotoModerationRequest request
     ) {
-        return ApiResponse.ok(adminPhotoService.moderate(request, jwtSubjectExtractor.requireSub(jwt)));
+        return ApiResponse.ok(adminPhotoService.moderate(jwtSubjectExtractor.requireSub(jwt), request));
     }
 
     @DeleteMapping
-    public ApiResponse<Integer> softDelete(@RequestParam("ids") String ids) {
-        return ApiResponse.ok(adminPhotoService.softDelete(ids));
+    public ApiResponse<Integer> softDelete(@AuthenticationPrincipal Jwt jwt, @RequestParam("ids") String ids) {
+        return ApiResponse.ok(adminPhotoService.softDelete(jwtSubjectExtractor.requireSub(jwt), ids));
     }
 }

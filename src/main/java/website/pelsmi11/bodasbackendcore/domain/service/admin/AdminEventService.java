@@ -42,9 +42,9 @@ public class AdminEventService {
         Event event = new Event();
         event.setName(request.getName());
         event.setToken(tokenGenerator.generateUniqueToken());
-        event.setAdminId(request.getAdminId() != null && !request.getAdminId().isBlank()
-                ? request.getAdminId()
-                : adminSub);
+        // events.admin_id ALWAYS derives from the authenticated JWT sub; any
+        // browser-supplied adminId is ignored (FR-013).
+        event.setAdminId(adminSub);
         event.setEventDate(request.getEventDate());
         event.setDescription(request.getDescription());
         event.setStatus(EventStatus.ACTIVE);
@@ -54,29 +54,30 @@ public class AdminEventService {
         return toResponse(saved);
     }
 
+    /** Ownership scope: every list/detail/mutation filters by events.admin_id == caller (FR-015). */
     @Transactional(readOnly = true)
-    public Page<EventResponse> findAll(String search, EventStatus status, Pageable pageable) {
+    public Page<EventResponse> findAll(String adminSub, String search, EventStatus status, Pageable pageable) {
         Page<Event> page;
         if (status != null && search != null && !search.isBlank()) {
-            page = eventRepository.findByNameContainingIgnoreCaseAndStatusOrderByCreatedAtDesc(search, status, pageable);
+            page = eventRepository.findByAdminIdAndNameContainingIgnoreCaseAndStatusOrderByCreatedAtDesc(adminSub, search, status, pageable);
         } else if (status != null) {
-            page = eventRepository.findByStatusOrderByCreatedAtDesc(status, pageable);
+            page = eventRepository.findByAdminIdAndStatusOrderByCreatedAtDesc(adminSub, status, pageable);
         } else if (search != null && !search.isBlank()) {
-            page = eventRepository.findByNameContainingIgnoreCaseOrderByCreatedAtDesc(search, pageable);
+            page = eventRepository.findByAdminIdAndNameContainingIgnoreCaseOrderByCreatedAtDesc(adminSub, search, pageable);
         } else {
-            page = eventRepository.findAllByOrderByCreatedAtDesc(pageable);
+            page = eventRepository.findByAdminIdOrderByCreatedAtDesc(adminSub, pageable);
         }
         return page.map(this::toResponse);
     }
 
     @Transactional(readOnly = true)
-    public EventResponse findById(Integer id) {
-        return toResponse(requireEvent(id));
+    public EventResponse findById(String adminSub, Integer id) {
+        return toResponse(requireOwnedEvent(adminSub, id));
     }
 
     @Transactional
-    public EventResponse update(Integer id, EventUpdateRequest request) {
-        Event event = requireEvent(id);
+    public EventResponse update(String adminSub, Integer id, EventUpdateRequest request) {
+        Event event = requireOwnedEvent(adminSub, id);
         if (request.getName() != null) event.setName(request.getName());
         if (request.getEventDate() != null) event.setEventDate(request.getEventDate());
         if (request.getDescription() != null) event.setDescription(request.getDescription());
@@ -86,16 +87,16 @@ public class AdminEventService {
     }
 
     @Transactional
-    public EventTokenRegenerateResponse regenerateToken(Integer id) {
-        Event event = requireEvent(id);
+    public EventTokenRegenerateResponse regenerateToken(String adminSub, Integer id) {
+        Event event = requireOwnedEvent(adminSub, id);
         event.setToken(tokenGenerator.generateUniqueToken());
         eventRepository.save(event);
         return new EventTokenRegenerateResponse(event.getToken());
     }
 
     @Transactional
-    public EventResponse setActive(Integer id, boolean active) {
-        Event event = requireEvent(id);
+    public EventResponse setActive(String adminSub, Integer id, boolean active) {
+        Event event = requireOwnedEvent(adminSub, id);
         event.setIsActive(active);
         if (!active) {
             event.setStatus(EventStatus.ARCHIVED);
@@ -107,22 +108,32 @@ public class AdminEventService {
     }
 
     @Transactional
-    public void delete(Integer id) {
-        Event event = requireEvent(id);
+    public void delete(String adminSub, Integer id) {
+        Event event = requireOwnedEvent(adminSub, id);
         event.setIsActive(false);
         event.setStatus(EventStatus.ARCHIVED);
         eventRepository.save(event);
     }
 
     @Transactional(readOnly = true)
-    public EventPhotoStatsDto getStats(Integer eventId) {
-        requireEvent(eventId);
-        long total = photoRepository.countByEventId(eventId);
-        long pending = photoRepository.countByEventIdAndStatus(eventId, ModerationStatus.PENDING);
-        long approved = photoRepository.countByEventIdAndStatus(eventId, ModerationStatus.APPROVED);
-        long rejected = photoRepository.countByEventIdAndStatus(eventId, ModerationStatus.REJECTED);
-        long deleted = photoRepository.countByEventIdAndDeletedAtIsNotNull(eventId);
-        return new EventPhotoStatsDto(total, pending, approved, rejected, deleted);
+    public EventPhotoStatsDto getStats(String adminSub, Integer eventId) {
+        Event event = requireOwnedEvent(adminSub, eventId);
+        return new EventPhotoStatsDto(
+                photoRepository.countByEventId(event.getId()),
+                photoRepository.countByEventIdAndStatus(event.getId(), ModerationStatus.PENDING),
+                photoRepository.countByEventIdAndStatus(event.getId(), ModerationStatus.APPROVED),
+                photoRepository.countByEventIdAndStatus(event.getId(), ModerationStatus.REJECTED),
+                photoRepository.countByEventIdAndDeletedAtIsNotNull(event.getId()));
+    }
+
+    /** Foreign event access must be indistinguishable from a missing event (404). */
+    private Event requireOwnedEvent(String adminSub, Integer id) {
+        Event event = eventRepository.findById(id)
+                .orElseThrow(() -> CustomErrorException.handlerCustomError("Event not found", HttpStatus.NOT_FOUND));
+        if (adminSub == null || !adminSub.equals(event.getAdminId())) {
+            throw CustomErrorException.handlerCustomError("Event not found", HttpStatus.NOT_FOUND);
+        }
+        return event;
     }
 
     private Event requireEvent(Integer id) {
