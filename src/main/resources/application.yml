@@ -28,9 +28,6 @@ spring:
     aws:
       region:
         static: ${AWS_REGION}
-      credentials:
-        profile:
-          name: ${AWS_PROFILE}
       s3:
         region: ${AWS_REGION}
 

@@ -119,12 +119,14 @@ The `.dockerignore` excludes `build/`, `.gradle/`, `.env`, `.idea/`, and other n
 | Variable | Description |
 |----------|-------------|
 | `SPRING_PROFILES_ACTIVE` | `dev` (local Redis) or `prod` (ElastiCache via SSM tunnel) |
-| `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | PostgreSQL connection (Neon) |
-| `AWS_REGION`, `AWS_PROFILE` | AWS credentials |
+| `DB_URL`, `DB_USERNAME` | PostgreSQL connection (Neon, role `pelsmi`). `DB_URL` must not carry `user=`/`password=` (they override `DB_USERNAME`/password) |
+| `DB_PASSWORD` | Optional fallback; the password is read from SSM `/bodas/backend/spring.datasource.password` (takes precedence) |
+| `AWS_REGION` | AWS region |
+| `AWS_PROFILE` | Local only. No profile is pinned in `application.yml`: credentials come from the SDK default chain (env vars → `AWS_PROFILE`/SSO → ECS task role). `BodasBackendCoreApplicationTests` asserts a `DefaultCredentialsProvider` |
 | `S3_BUCKET_NAME` | S3 bucket for photo uploads |
 | `COGNITO_ISSUER_URI` | Cognito JWT validation |
 | `REDIS_HOST`, `REDIS_PORT` | Redis host (required for `prod` profile, optional for `dev`) |
-| `WEBHOOK_PARAMETER_PATH` | SSM Parameter Store path containing `moderation-webhook` (default: `/bodas/backend/`) |
+| `WEBHOOK_PARAMETER_PATH` | SSM path imported at startup (default `/bodas/backend/`): `moderation-webhook` + `spring.datasource.password`. Needs `ssm:GetParametersByPath` on the path |
 | `WEBHOOK_SECRET` | Test-only fallback when no runtime profile imports Parameter Store |
 | `APP_REDIS_LISTENER_ENABLED` | Set to `false` to disable Redis pub/sub listener (default: `true`) |
 

@@ -7,6 +7,8 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.services.s3.S3Client;
 import website.pelsmi11.bodasbackendcore.persistence.repository.EventRepository;
 import website.pelsmi11.bodasbackendcore.persistence.repository.PhotoRepository;
@@ -38,6 +40,9 @@ class BodasBackendCoreApplicationTests {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private AwsCredentialsProvider awsCredentialsProvider;
 
     @MockitoBean
     private S3Template s3Template;
@@ -94,5 +99,12 @@ class BodasBackendCoreApplicationTests {
     void otherActuatorEndpoints_requireAuthentication() throws Exception {
         mockMvc.perform(get("/actuator/env"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    // On Fargate there is no ~/.aws: only the default chain reaches the ECS task role.
+    @Test
+    void awsCredentials_useDefaultChain_notAPinnedProfile() {
+        org.assertj.core.api.Assertions.assertThat(awsCredentialsProvider)
+                .isInstanceOf(DefaultCredentialsProvider.class);
     }
 }
