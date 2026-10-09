@@ -68,3 +68,11 @@ springdoc:
     enabled: false
   swagger-ui:
     enabled: false
+
+# /actuator/health/liveness is the ALB + Docker health check: public and
+# independent of DB/Redis, so a dependency outage doesn't recycle every task.
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true

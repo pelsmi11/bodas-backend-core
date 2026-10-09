@@ -354,6 +354,7 @@ SELECT * FROM flyway_schema_history ORDER BY installed_rank;
 ## Known Debt / Future Work
 
 - **Role enforcement**: done (Phase 4). `/api/v1/admin/**` → `hasRole("ADMIN")` via `web/auth/CognitoJwtAuthenticationConverter`. Ownership checks (admin only sees own events) are not implemented.
+- **Health checks**: ALB target group + Dockerfile `HEALTHCHECK` use `/actuator/health/liveness` (public via `SecurityConfig`, probes enabled in `application.yml`). It does not include DB/Redis, so a dependency outage doesn't recycle tasks. Other actuator endpoints stay authenticated.
 - **Webhook secret**: `WebhookController.secureEquals` rejects when the expected secret is null/blank, so a missing SSM parameter can never accept an empty header.
 - **Event ownership**: `Event.adminId` stores Cognito `sub` but is not validated against caller JWT. Future: filter events by `adminId == jwt.sub` for organizer-scoped access.
 - **Database migrations**: ✅ Resolved — Flyway manages schema evolution (`db/migration/`). `ddl-auto: validate` (Hibernate validates only).

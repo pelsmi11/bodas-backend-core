@@ -2,13 +2,20 @@ package website.pelsmi11.bodasbackendcore;
 
 import io.awspring.cloud.s3.S3Template;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
 import software.amazon.awssdk.services.s3.S3Client;
 import website.pelsmi11.bodasbackendcore.persistence.repository.EventRepository;
 import website.pelsmi11.bodasbackendcore.persistence.repository.PhotoRepository;
 import website.pelsmi11.bodasbackendcore.persistence.repository.UserDeviceRepository;
 import website.pelsmi11.bodasbackendcore.persistence.repository.UserRepository;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {
         "spring.main.allow-bean-definition-overriding=true",
@@ -26,7 +33,11 @@ import website.pelsmi11.bodasbackendcore.persistence.repository.UserRepository;
         "app.redis.listener.enabled=false",
         "WEBHOOK_SECRET=test-webhook-secret"
 })
+@AutoConfigureMockMvc
 class BodasBackendCoreApplicationTests {
+
+    @Autowired
+    private MockMvc mockMvc;
 
     @MockitoBean
     private S3Template s3Template;
@@ -72,4 +83,16 @@ class BodasBackendCoreApplicationTests {
         org.assertj.core.api.Assertions.assertThat(sessionBootstrapService).isNotNull();
     }
 
+    @Test
+    void livenessProbe_isPublic_andUp() throws Exception {
+        mockMvc.perform(get("/actuator/health/liveness"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UP"));
+    }
+
+    @Test
+    void otherActuatorEndpoints_requireAuthentication() throws Exception {
+        mockMvc.perform(get("/actuator/env"))
+                .andExpect(status().isUnauthorized());
+    }
 }
