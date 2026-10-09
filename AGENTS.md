@@ -209,7 +209,7 @@ website.pelsmi11.bodasbackendcore
 | GET | `/api/v1/health/feed` | Redis + listener health check |
 | POST | `/api/v1/webhooks/moderation` | Lambda moderation callback (X-Webhook-Secret validated) |
 
-### Admin Endpoints (20) — `/api/v1/admin/**`, JWT required (no role enforcement yet)
+### Admin Endpoints (20) — `/api/v1/admin/**`, JWT + Cognito group `ADMIN` required
 
 **Events** (`AdminEventController` — `/api/v1/admin/events`):
 
@@ -243,7 +243,7 @@ website.pelsmi11.bodasbackendcore
 | GET | `/api/v1/admin/users` | List users (paginated, filters: `search`, `role`) |
 | GET | `/api/v1/admin/users/{id}` | User detail |
 | GET | `/api/v1/admin/users/{id}/devices` | Devices of user (paginated) |
-| PATCH | `/api/v1/admin/users/{id}/role` | Set user role (GUEST/ADMIN — prepared, not enforced) |
+| PATCH | `/api/v1/admin/users/{id}/role` | Set user role (GUEST/ADMIN; DB mirror — access is enforced from the `cognito:groups` claim) |
 | POST | `/api/v1/admin/devices/block` | Block devices (batch) |
 | POST | `/api/v1/admin/devices/unblock` | Unblock devices (batch) |
 
@@ -256,7 +256,7 @@ website.pelsmi11.bodasbackendcore
 - **JPA**: `ddl-auto: validate` — Hibernate validates entities against schema only; Flyway manages schema evolution (`src/main/resources/db/migration/`)
 - **Auth**: OAuth2 Resource Server with Cognito JWT. `sub` claim used as user identity.
   - Public endpoints: `permitAll()` in `SecurityConfig`
-  - Admin endpoints: `authenticated()` — any valid Cognito JWT accepted (no role/ownership enforcement yet)
+  - Admin endpoints: `hasRole("ADMIN")` — `CognitoJwtAuthenticationConverter` maps `cognito:groups` `ADMIN` → `ROLE_ADMIN`; other JWTs get `403`
   - `JwtSubjectExtractor` (`web/auth/`) centralizes JWT `sub` extraction with 401 fallback
 - **Real-time feed**: SSE via `EventFeedStreamService` (in-memory emitters) + Redis Pub/Sub (`event-feed:*` channel) for multi-node fan-out. `PhotoFeedPublisher` is the shared publish point used by both `ModerationService` (webhook) and `AdminPhotoService` (manual approval).
 - **Identity model**: Hybrid anonymous/authenticated. Guests identified by client-generated UUID (localStorage). If Cognito JWT present, `GuestIdentityService` merges guest device with Cognito user. Blocked devices get 403.
@@ -353,7 +353,8 @@ SELECT * FROM flyway_schema_history ORDER BY installed_rank;
 
 ## Known Debt / Future Work
 
-- **Role enforcement**: `UserRole` enum exists (`GUEST`, `ADMIN`) but is not enforced in `SecurityConfig`. Current admin endpoints accept any valid Cognito JWT. Future: add `JwtAuthenticationConverter` mapping `cognito:groups` or custom claim to `ROLE_ADMIN`, then `hasRole("ADMIN")` on `/api/v1/admin/**`.
+- **Role enforcement**: done (Phase 4). `/api/v1/admin/**` → `hasRole("ADMIN")` via `web/auth/CognitoJwtAuthenticationConverter`. Ownership checks (admin only sees own events) are not implemented.
+- **Webhook secret**: `WebhookController.secureEquals` rejects when the expected secret is null/blank, so a missing SSM parameter can never accept an empty header.
 - **Event ownership**: `Event.adminId` stores Cognito `sub` but is not validated against caller JWT. Future: filter events by `adminId == jwt.sub` for organizer-scoped access.
 - **Database migrations**: ✅ Resolved — Flyway manages schema evolution (`db/migration/`). `ddl-auto: validate` (Hibernate validates only).
 - **SSE distribution**: Emitters are in-memory per node. Redis pub/sub handles fan-out across nodes, but `dispatchNewPhoto` is only called from the node processing the webhook. Acceptable for current scale.

@@ -51,7 +51,7 @@ public class WebhookController {
     }
 
     private boolean secureEquals(String left, String right) {
-        if (left == null || right == null) {
+        if (left == null || left.isBlank() || right == null) {
             return false;
         }
         return MessageDigest.isEqual(

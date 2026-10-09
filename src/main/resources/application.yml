@@ -58,7 +58,7 @@ app:
   feed:
     heartbeat-ms: ${PHOTO_FEED_HEARTBEAT_MS:25000}
   cors:
-    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,https://bodas.pelsmi.website}
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,https://bodas.aws.pelsmi11.website}
   webhook:
     secret: ${moderation-webhook:${WEBHOOK_SECRET:}}
 

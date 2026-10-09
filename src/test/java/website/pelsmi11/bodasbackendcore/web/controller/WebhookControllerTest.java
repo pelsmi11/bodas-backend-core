@@ -3,6 +3,8 @@ package website.pelsmi11.bodasbackendcore.web.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -22,6 +24,7 @@ import website.pelsmi11.bodasbackendcore.web.exception.GlobalExceptionHandler;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -82,6 +85,33 @@ class WebhookControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"s3Key\":\"uploads/key.jpg\",\"isApproved\":true}"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "   "})
+    void handleModerationResult_blankExpectedSecret_rejectsMatchingBlankHeader(String blank) throws Exception {
+        ReflectionTestUtils.setField(webhookController, "expectedSecret", blank);
+
+        mockMvc.perform(post("/api/v1/webhooks/moderation")
+                        .header("X-Webhook-Secret", blank)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"s3Key\":\"uploads/key.jpg\",\"isApproved\":true}"))
+                .andExpect(status().isUnauthorized());
+
+        verify(moderationService, never()).processModerationResult(any());
+    }
+
+    @Test
+    void handleModerationResult_nullExpectedSecret_returns401() throws Exception {
+        ReflectionTestUtils.setField(webhookController, "expectedSecret", null);
+
+        mockMvc.perform(post("/api/v1/webhooks/moderation")
+                        .header("X-Webhook-Secret", "anything")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"s3Key\":\"uploads/key.jpg\",\"isApproved\":true}"))
+                .andExpect(status().isUnauthorized());
+
+        verify(moderationService, never()).processModerationResult(any());
     }
 
     @Test
