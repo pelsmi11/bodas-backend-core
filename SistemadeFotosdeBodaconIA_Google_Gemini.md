@@ -64,7 +64,31 @@ Sistema de Fotos de Boda con IA - Google Gemini
 
 ## 7. Diseño de Base de Datos (PostgreSQL / Neon) 
 
-Usuarios , Eventos , Participaciones (con guest_id y user_id ), Fotos . 
+The implemented schema currently contains `users`, `user_devices`, `events`, and `photos`.
+
+### 7.1 Planned guest-to-event participation
+
+Add an `event_participants` relationship in a future authentication specification. Its purpose is to record that a user joined an event even when the user has not uploaded a photo yet. This avoids inferring event membership from the `photos` table and makes post-login routing deterministic.
+
+Proposed logical fields:
+
+| Field | Purpose |
+| --- | --- |
+| `event_id` | Foreign key to `events.id`. |
+| `user_id` | Foreign key to `users.id`. |
+| `joined_at` | First time the user joined the event. |
+| `last_accessed_at` | Most recent event access, useful when selecting a return destination. |
+
+The pair `(event_id, user_id)` must be unique. This is a many-to-many relationship because one account may attend multiple weddings and one wedding has multiple participants. The anonymous `guest_uuid` remains in `user_devices` and must not be duplicated here: the existing identity merge links that device to the user identified by the Cognito `sub`.
+
+Expected authentication behavior:
+
+1. A guest opens an event through its QR `eventToken`, and the frontend preserves the event context plus the browser `guestUuid`.
+2. Guest registration creates a normal guest account; administrative access is never granted through public registration.
+3. After sign-in, the backend merges `guestUuid` with the Cognito `sub` and upserts the event participation.
+4. A user with the Cognito `ADMIN` group is routed to the administration area. A guest is routed to their only active event, shown an event selector when multiple memberships exist, or asked for an event code when none exists.
+
+Cognito groups define application authorization; `event_participants` defines event membership. Membership must never grant administrative privileges. This table and its session/bootstrap API are planned only: they require a dedicated specification and Flyway migration before implementation.
 
 ## 8. Diseño de Redes (Amazon VPC) 
 
@@ -203,4 +227,3 @@ https://api.hectormartinezmoreira.com/... , viajando de forma segura (encriptada
 https://gemini.google.com/app/503705e24e89b0d8 
 
 4/4 
-
